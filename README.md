@@ -241,9 +241,6 @@ What it shows:
   - open notional;
   - number of positions;
   - lifetime realized PnL.
-- **Net exposure** (a strip under the cards), per market with open positions: long notional − short
-  notional (margin × leverage), tagged NET LONG / NET SHORT, with the long and short totals and the net size
-  in the asset (e.g. `BTC +$100,000 NET LONG · long $400,000 · short $300,000 · +1.3638 BTC`).
 - **Positions | History tabs**, laid out like the tab strip under Papertrade's trade page. The tab you pick
   is remembered for that browser tab.
 - **Positions tab: open positions**
@@ -258,6 +255,10 @@ What it shows:
   - bust price;
   - risk (how far price has moved toward bust);
   - how long it's been open.
+
+  **Net exposure** rows close the table, one per market: the net size (in the asset) and net notional
+  (long − short, margin × leverage) under the Size and Notional columns, tagged NET LONG / NET SHORT, with the
+  long and short totals beside them (e.g. `BTC NET LONG +1.3638 +$100,000 · long $400,000 · short $300,000`).
 
   Each row has a **Close** button that adds the close to the batch in the right-hand column. **Close All**
   (in the tab bar) adds every open position's close; nothing is sent until you submit the batch.

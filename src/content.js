@@ -257,7 +257,7 @@
   .batch > .bexec.good b { color: var(--o-pos); } .batch > .bexec.bad b { color: var(--o-neg); }
 
   /* ---- Full-screen dashboard (a Papertrade tab opened with ⤢) ---- */
-  .full { position: fixed; inset: 0; background: var(--o-page); color: var(--o-ink); display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); overflow: hidden;
+  .full { position: fixed; inset: 0; background: var(--o-page); color: var(--o-ink); display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden;
     font: 13px/1.45 var(--o-font); }
   .ftop { display: flex; align-items: center; gap: 16px; padding: 10px 20px; border-bottom: 1px solid var(--o-border); flex-wrap: wrap; }
   .ftitle { font-weight: 700; font-size: 15px; }
@@ -268,13 +268,11 @@
   .fcard { background: var(--o-panel); padding: 10px 20px; }
   .fcard dt { color: var(--o-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
   .fcard dd { margin: 2px 0 0; font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .fexpo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 24px; padding: 9px 20px; background: var(--o-panel); border-bottom: 1px solid var(--o-border); font-variant-numeric: tabular-nums; }
-  .fexpo[hidden] { display: none; }
-  .fexpo-label { color: var(--o-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
-  .fexpo-item { display: inline-flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
-  .fexpo-net { font-size: 15px; font-weight: 600; }
-  .fexpo .tag { font-size: 10px; font-weight: 700; letter-spacing: .04em; padding: 1px 6px; border-radius: 4px; }
-  .fbody { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; grid-row: 4; } /* row 3 is the exposure strip (may be hidden) */
+  .ftable tfoot td { background: var(--o-sunken); font-weight: 600; }
+  .ftable tfoot tr:first-child td { border-top: 1px solid var(--o-border); }
+  .ftable tfoot td:first-child { color: var(--o-muted); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
+  .ftable tfoot td.fnote { text-align: left; font-weight: 400; color: var(--o-muted); }
+  .fbody { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
   @media (max-width: 1300px) { .fbody { grid-template-columns: minmax(0, 1fr) 304px; } .fmain { padding: 16px 14px 40px; } .fmain .ftable th, .fmain .ftable td { padding: 7px 6px; } }
   .fmain { overflow: auto; padding: 16px 20px 40px; display: grid; grid-auto-rows: max-content; gap: 16px; align-content: start; min-width: 0; }
   .faside { border-left: 1px solid var(--o-border); overflow: auto; min-height: 0; }
@@ -313,7 +311,7 @@
   .fpager { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--o-border); }
   /* Narrow windows (below ~1160px): one column, the order builder under the tables; the whole dashboard scrolls. */
   @media (max-width: 1160px) {
-    .full { overflow: auto; grid-template-rows: auto auto auto auto; }
+    .full { overflow: auto; grid-template-rows: auto auto auto; }
     .fbody { grid-template-columns: minmax(0, 1fr); }
     .fmain { overflow: visible; }
     .faside { border-left: 0; border-top: 1px solid var(--o-border); overflow: visible; }
@@ -328,7 +326,6 @@
     <button class="link" id="f-exit" type="button">Back to overlay</button>
   </header>
   <dl class="fcards" id="f-cards"></dl>
-  <div class="fexpo" id="f-expo" hidden></div>
   <div class="fbody">
     <main class="fmain">
       <section class="fpanel">
@@ -1921,16 +1918,22 @@
       if (entry > 0) e.units += (p.isLong ? 1 : -1) * (notional / entry); else e.unitsKnown = false;
       expo.set(sym, e);
     }
+    // Net exposure per market, as footer rows of the positions table: net size and net notional sit under the
+    // Size and Notional columns (long − short), with the long and short totals beside them.
     const usd0 = (v) => (v === 0 ? '$0' : usd(v));
-    const expoItems = [...expo.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([sym, e]) => {
+    const expoRows = [...expo.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([sym, e], i) => {
       const net = e.long - e.short;
       const side = Math.abs(net) < 0.005 ? 'flat' : net > 0 ? 'long' : 'short';
-      const units = e.unitsKnown ? `${e.units >= 0 ? '+' : '−'}${shares(Math.abs(e.units), 1)} ${sym}` : '';
-      return `<span class="fexpo-item"><b>${sym}</b> <span class="fexpo-net">${net > 0 ? '+' : net < 0 ? '−' : ''}${usd0(Math.abs(net))}</span>${side === 'flat' ? '' : ` <span class="tag ${side === 'long' ? 'LONG' : 'SHORT'}">NET ${side.toUpperCase()}</span>`}
-        <span class="small">long ${usd0(e.long)} · short ${usd0(e.short)}${units ? ` · ${units}` : ''}</span></span>`;
+      const sign = (v) => (v > 0 ? '+' : v < 0 ? '−' : '');
+      return `<tr>
+        <td>${i === 0 ? 'Net exposure' : ''}</td>
+        <td>${sym}${side === 'flat' ? ' <span class="small">flat</span>' : ` <span class="tag ${side === 'long' ? 'LONG' : 'SHORT'}">NET ${side.toUpperCase()}</span>`}</td>
+        <td></td>
+        <td>${e.unitsKnown ? `${sign(e.units)}${shares(Math.abs(e.units), 1)}` : '–'}</td>
+        <td>${sign(net)}${usd0(Math.abs(net))}</td>
+        <td class="fnote" colspan="6">long ${usd0(e.long)} · short ${usd0(e.short)}</td></tr>`;
     });
-    $('f-expo').innerHTML = expoItems.length ? `<span class="fexpo-label">Net exposure</span>${expoItems.join('')}` : '';
-    $('f-expo').hidden = !expoItems.length;
+    if (expoRows.length && acct.positions.size) $('f-pos').insertAdjacentHTML('beforeend', `<tfoot>${expoRows.join('')}</tfoot>`);
     $('f-cards').innerHTML = [
       card('Equity', priced ? usd(wadNum(equity)) : '–'),
       card('Open PnL', priced ? signed(wadNum(payoutSum)) : '–', priced ? tone(wadNum(payoutSum)) : ''),
