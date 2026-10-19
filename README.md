@@ -132,6 +132,22 @@ When the batch is sent:
    - **filled @ price** for opens, **closed +$PnL** for closes;
    - or **expired** / **failed** / **cancelled** / **refused** with the reason.
 
+### Execution quality
+
+Ideally every order of a batch fills at the same mark price; the queue can spread them out. Once **every** order
+of a batch has filled, the batch shows how close together they filled:
+
+- **Fill prices:** an open fills at its entry price. A close fills at its exit price, which Papertrade only
+  publishes in the trade history, so it's looked up there (the batch says "looking up the close prices…" for the
+  few seconds the history takes to catch up; it gives up after two minutes).
+- **Spread** = (highest fill − lowest fill) ÷ lowest fill, in basis points, compared within each market.
+- **GOOD** when the spread is under **1 bp** (0.01%), otherwise **BAD**, e.g.
+  `Execution GOOD · fills 0.62 bps apart · BTC 81,250 – 81,255` or
+  `Execution BAD · fills 6.15 bps apart · BTC 81,250 – 81,300`. With BTC and ETH orders in one batch, each market
+  is checked on its own and the widest spread decides.
+- **No grade** when an order didn't fill (cancelled, refused, expired), when every order is on a different
+  market (nothing to compare), or for a single order. A liquidated position isn't a fill of its close.
+
 ### The queue guard
 
 After it's accepted, every order has its own place in Papertrade's queue. The guard keeps the batch's

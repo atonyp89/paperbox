@@ -241,6 +241,9 @@
   .submit:hover { opacity: .88; } .submit[disabled] { cursor: default; background: var(--o-sunken); color: var(--o-faint); }
   .batch { border-top: 1px solid var(--o-border); padding-top: 6px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; }
   .batch > .bhead { color: var(--o-ink); }
+  .batch > .bexec { display: block; margin-top: 2px; padding: 4px 6px; border-radius: 4px; background: var(--o-sunken); color: var(--o-muted); }
+  .batch > .bexec b { font-weight: 700; }
+  .batch > .bexec.good b { color: var(--o-pos); } .batch > .bexec.bad b { color: var(--o-neg); }
 
   /* ---- Full-screen dashboard (a Papertrade tab opened with ⤢) ---- */
   .full { position: fixed; inset: 0; background: var(--o-page); color: var(--o-ink); display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); overflow: hidden;
@@ -1139,7 +1142,7 @@
         : `<span class="bad">${r.state}${r.detail ? `: ${r.detail}` : ''}</span>`;
       return `<div><span>${describe(r)}</span>${state}</div>`;
     }).join('');
-    return `<div class="batch"><div class="bhead"><span>Batch ${time}</span>${guard}</div>${rows}</div>`;
+    return `<div class="batch"><div class="bhead"><span>Batch ${time}</span>${guard}</div>${rows}${renderExec(b)}</div>`;
   }
 
   const REFUSAL = {
@@ -1301,14 +1304,85 @@
       entryRaw: BigInt(t[4]), marginRaw: BigInt(t[5]), bustRaw: BigInt(t[7]), openedAtMs: t[8], intentId: t[9] };
     acct.positions.set(pos.id, pos);
     const r = allOrders().find((x) => x.kind === 'open' && x.intentId && x.intentId === t[9]);
-    if (r && r.state !== 'filled') { r.state = 'filled'; r.detail = `@ ${px(pos.entry, inst)}`; r.rank = null; }
+    if (r && r.state !== 'filled') {
+      r.state = 'filled'; r.detail = `@ ${px(pos.entry, inst)}`; r.rank = null;
+      r.fill = { raw: pos.entryRaw, scale: inst ? inst.priceScaleRaw : null, market: pos.market };
+    }
   }
 
   function onClosed(c) {
     const id = String(c[0]);
     acct.positions.delete(id);
     const r = allOrders().find((x) => x.kind === 'close' && x.positionId === id && (x.state === 'queued' || x.state === 'cancelling'));
-    if (r) { r.state = 'filled'; r.detail = `${Number(BigInt(c[6])) >= 0 ? '+' : ''}${usd(Number(BigInt(c[6])) / 1e18)}${c[5] ? ' (liquidated)' : ''}`; r.rank = null; }
+    if (r) {
+      r.state = 'filled'; r.detail = `${Number(BigInt(c[6])) >= 0 ? '+' : ''}${usd(Number(BigInt(c[6])) / 1e18)}${c[5] ? ' (liquidated)' : ''}`; r.rank = null;
+      if (!c[5]) { r.awaitExit = { since: Date.now() }; lookupExits(); } // a liquidation isn't this order's fill
+    }
+  }
+
+  // ---- Execution quality: once every order of a batch has filled, compare the prices they filled at ----
+  // Ideally the whole batch fills at one mark price; the queue can spread them out. Opens fill at their entry
+  // (from the stream), closes at their exit (only in the trade history, so looked up there). Within each market,
+  // spread = (highest − lowest) / lowest; under 1 basis point is a good execution, anything else bad.
+  const GOOD_BPS = 1;
+  let exitTimer = null;
+  async function lookupExits() {
+    clearTimeout(exitTimer);
+    const waiting = allOrders().filter((r) => r.awaitExit);
+    if (!waiting.length || !sk.master) return;
+    try {
+      const q = new URLSearchParams({ limit: '75', filter: 'all' });
+      q.sort(); // Papertrade refuses query parameters that aren't in alphabetical order
+      const d = await (await fetch(`${API}/query/accounts/${sk.master}/trades?${q}`, { cache: 'no-store' })).json();
+      for (const r of waiting) {
+        const t = (d.items ?? []).find((x) => String(x.positionId) === r.positionId && x.exitPriceRaw);
+        if (!t) continue;
+        const scale = BigInt(t.priceScaleRaw);
+        r.fill = { raw: BigInt(t.exitPriceRaw), scale, market: t.symbol };
+        r.detail += ` @ ${px(Number(BigInt(t.exitPriceRaw)) / Number(scale), instById(t.instrumentId))}`;
+        delete r.awaitExit;
+      }
+    } catch { /* retried below */ }
+    // The indexer can lag the stream by a few seconds; give it up to two minutes, then grade without it.
+    for (const r of allOrders()) if (r.awaitExit && Date.now() - r.awaitExit.since > 120_000) { delete r.awaitExit; r.fillUnknown = true; }
+    if (allOrders().some((r) => r.awaitExit)) exitTimer = setTimeout(lookupExits, 3000);
+    renderOrder();
+  }
+
+  // b.exec: { grade: 'good' | 'bad' | 'none', bps?, ranges?, note? }, set once the batch has finished.
+  function gradeBatch(b) {
+    if (b.exec || b.orders.length < 2 || b.state === 'waiting' || b.state === 'withdrawn' || b.state === 'failed') return;
+    if (!b.orders.every((r) => r.state === 'filled')) {
+      if (b.orders.every((r) => r.state === 'filled' || BAD.has(r.state))) b.exec = { grade: 'none', note: 'not every order filled' };
+      return;
+    }
+    if (b.orders.some((r) => r.awaitExit)) return; // still looking up a close's exit price
+    if (b.orders.some((r) => !r.fill)) return void (b.exec = { grade: 'none', note: "a close's fill price isn't in Papertrade's history yet" });
+    const byMarket = new Map();
+    for (const r of b.orders) byMarket.set(r.fill.market, [...(byMarket.get(r.fill.market) ?? []), r.fill]);
+    const groups = [...byMarket.entries()].filter(([, f]) => f.length >= 2);
+    if (!groups.length) return void (b.exec = { grade: 'none', note: 'each order is on a different market, so there is nothing to compare' });
+    const ranges = groups.map(([market, fills]) => {
+      const raws = fills.map((f) => f.raw), lo = raws.reduce((a, x) => (x < a ? x : a)), hi = raws.reduce((a, x) => (x > a ? x : a));
+      const inst = trading?.inst?.[market], scale = Number(fills[0].scale ?? inst?.priceScaleRaw ?? 1n);
+      return { market, lo: px(Number(lo) / scale, inst), hi: px(Number(hi) / scale, inst), bps: (Number(hi - lo) / Number(lo)) * 1e4 };
+    });
+    const bps = Math.max(...ranges.map((x) => x.bps));
+    b.exec = { grade: bps < GOOD_BPS ? 'good' : 'bad', bps, ranges };
+  }
+
+  function renderExec(b) {
+    gradeBatch(b);
+    const e = b.exec;
+    if (!e) {
+      return b.orders.length >= 2 && b.orders.every((r) => r.state === 'filled') && b.orders.some((r) => r.awaitExit)
+        ? '<div class="bexec">Execution: looking up the close prices…</div>' : '';
+    }
+    if (e.grade === 'none') return `<div class="bexec">Execution: no grade (${e.note}).</div>`;
+    // Per-market spreads only matter when the batch spans several markets; the headline is the widest.
+    const many = e.ranges.length > 1;
+    const where = e.ranges.map((x) => (x.lo === x.hi ? `${x.market} all @ ${x.lo}` : `${x.market} ${x.lo} – ${x.hi}${many ? ` (${x.bps.toFixed(2)} bps)` : ''}`)).join(' · ');
+    return `<div class="bexec ${e.grade}">Execution <b>${e.grade === 'good' ? 'GOOD' : 'BAD'}</b> · ${e.bps < 0.005 ? 'same fill price' : `fills ${e.bps.toFixed(2)} bps apart`} (good is under ${GOOD_BPS} bp) · ${where}</div>`;
   }
 
   function onOutcome(intentId, outcome) {
