@@ -261,6 +261,15 @@
     font: 13px/1.45 var(--o-font); }
   .ftop { display: flex; align-items: center; gap: 16px; padding: 10px 20px; border-bottom: 1px solid var(--o-border); flex-wrap: wrap; }
   .ftitle { font-weight: 700; font-size: 15px; }
+  /* Full screen: the header already shows the queue status, so the sidebar drops its status box; the session
+     key (status, expiry, Replace / Remove, and its messages) moves up into the header. */
+  .faside #panel > .grid, .faside #panel > .spark { display: none !important; }
+  .fsession { display: flex; align-items: center; padding-left: 16px; border-left: 1px solid var(--o-border); min-width: 0; }
+  .fsession .session { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 0; border: 0; }
+  .fsession .session .row { justify-content: flex-start; gap: 6px; }
+  .fsession .session .lbl { display: inline; }
+  .fsession #sk-msg { flex-basis: 100%; }
+  .fsession #sk-detail { max-width: 360px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .fnet { display: flex; gap: 14px; flex-wrap: wrap; font-variant-numeric: tabular-nums; color: var(--o-muted); }
   .fnet b { color: var(--o-ink); font-weight: 600; }
   .fspacer { flex: 1; }
@@ -323,6 +332,7 @@
     <span class="fnet" id="f-net"></span>
     <span class="fspacer"></span>
     <span class="small" id="f-account"></span>
+    <div class="fsession" id="f-session-slot"></div>
     <button class="link" id="f-exit" type="button">Back to overlay</button>
   </header>
   <dl class="fcards" id="f-cards"></dl>
@@ -1856,7 +1866,7 @@
     $('f-net').innerHTML = st.live
       ? `<span>congestion <b class="${st.congestion === 'HIGH' ? 'bad' : st.congestion === 'MEDIUM' ? 'warn' : 'ok'}">${st.congestion}</b></span><span>pending <b>${num(st.pending)}</b></span><span>avg tx/block <b>${st.avgTx?.toFixed(1)}</b></span><span>clear <b>${fmtClear(st.clearS)}</b></span><span>block <b>#${num(st.block)}</b></span>`
       : '<span class="warn">network status unavailable</span>';
-    $('f-account').textContent = sk.master ? `${short(sk.master)}${sk.local ? ` · key ${short(sk.local.address)}` : ''}` : 'wallet not connected';
+    $('f-account').textContent = sk.master ? `wallet ${short(sk.master)}` : ''; // the session block beside it covers the rest
 
     // Positions, valued exactly like the Papertrade UI.
     let adjustedSum = 0n, payoutSum = 0n, costSum = 0n, marginSum = 0n, notionalSum = 0n, priced = true;
@@ -2007,6 +2017,7 @@
     $('pill').hidden = true;
     $('panel').hidden = false;
     $('f-aside').appendChild($('panel')); // the same status / session / order builder, now as the sidebar
+    $('f-session-slot').appendChild($('session')); // the session key goes up into the header
     $('pw').classList.add('docked'); // and the PAPER widget under it
     $('pw-panel').hidden = false;
     $('f-aside').appendChild($('pw'));

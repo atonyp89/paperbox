@@ -231,7 +231,9 @@ overlay** (top right) turns that tab back into a normal Papertrade tab. The exte
 full screen, so reloading keeps the mode.
 
 What it shows:
-- **Top bar:** congestion, pending tx, avg tx/block, time to clear, latest block; your wallet and session key.
+- **Top bar:** congestion, pending tx, avg tx/block, time to clear, latest block; your wallet; and the
+  **session key**: its status and expiry, with **Replace…** / **Remove** (or **Create session key** /
+  **Connect wallet** when needed). Messages from the wallet flow appear there too.
 - **Cards:**
   - equity;
   - open PnL;
@@ -274,7 +276,8 @@ What it shows:
   25 trades per page. **‹ Prev** / **Next ›** step through them, and Next fetches older trades from
   Papertrade (75 at a time) when you reach the end of what's loaded. Newly closed trades are added at the top
   without losing your place.
-- **Right column:** the same session key, order builder, batches and queue guard as the overlay.
+- **Right column:** the order builder, batches and guards, then the PAPER widget. The queue status box and the
+  session key aren't repeated there, since the top bar shows both.
 
 PnL here uses Papertrade's exact valuation (deadband, impact haircut, win fee), checked identical to Papertrade's
 own formula on 8,000 random positions. It matches what Papertrade's own
