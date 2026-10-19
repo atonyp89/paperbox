@@ -1,0 +1,22 @@
+{
+  "name": "paperbox",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Paperbox: a Chrome extension for exchange.papertrade.xyz (queue status, batch orders, full-screen positions).",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "dev": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "check": "tsc --noEmit && node --check src/content.js && node --check src/bridge.js && node scripts/build.mjs",
+    "zip": "node scripts/build.mjs && cd dist && zip -r ../paperbox.zip ."
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.3.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "viem": "2.57.2"
+  }
+}
