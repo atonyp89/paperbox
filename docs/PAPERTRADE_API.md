@@ -912,8 +912,9 @@ The repo is the Paperbox Chrome extension; everything below runs in the browser.
 | `src/content.js` | Market terms, account stream (patches, reconnect, watchdog), pressure socket, Hyperliquid BBO marks, all valuation math (haircut, win fee, bust risk), queue ranks, OI headroom, batch guards, the full-screen dashboard |
 | `src/bridge.js` | Finding the wallet through EIP-6963 and relaying signature requests from the page |
 
-`Stake` is built in `src/intents.ts` (`stakeMessage`) and signed by the master wallet through `src/bridge.js`;
-`Unstake` and `Claim` are documented (section 10) but not implemented here.
+`Stake` and `Claim` are built in `src/intents.ts` (`stakeMessage`, `claimMessage`) and signed by the master
+wallet through `src/bridge.js`; `Unstake` is documented (section 10) but not implemented here. Total PAPER supply
+and total staked come from `/query/protocol/summary` (`paper.supply`, `paper.staked`, 18 decimals).
 
 ---
 

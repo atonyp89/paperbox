@@ -204,8 +204,19 @@
   .field input { all: unset; box-sizing: border-box; width: 100%; min-width: 0; background: var(--o-raised); border: 1px solid var(--o-border); border-radius: 4px;
     padding: 5px 8px; font: 600 13px var(--o-font); font-variant-numeric: tabular-nums; color: var(--o-ink); }
   .field input:focus { border-color: var(--o-chart); }
-  .stake { padding: 8px 12px 10px; border-top: 1px solid var(--o-border); display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
-  .stake[hidden] { display: none; }
+  /* The PAPER widget floats on its own (position saved separately); in full screen it docks under the panel. */
+  .pwidget { position: fixed; z-index: 1; }
+  .ptoken { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; flex: none;
+    background: var(--o-ink); color: var(--o-panel); font-size: 10px; font-weight: 800; }
+  .pwsec { padding: 8px 12px 10px; border-top: 1px solid var(--o-border); display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .pwsec .val { display: block; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pwsec .action:disabled { opacity: .45; cursor: default; }
+  .pwidget.docked { position: static; }
+  .pwidget.docked #pw-pill, .pwidget.docked #pw-collapse { display: none !important; }
+  .pwidget.docked .panel { border-top: 1px solid var(--o-border); }
+  .pwidget.docked .head { cursor: default; position: static; }
+  .faside .pwidget .head { display: flex; } /* the sidebar hides the main panel's header, but this one titles the section */
+  .pwidget .cell .small { display: block; }
   .stakerow { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .stakerow input { all: unset; box-sizing: border-box; flex: 1 1 0; width: 0; min-width: 0; background: var(--o-raised); border: 1px solid var(--o-border); border-radius: 4px;
     padding: 5px 8px; font: 600 13px var(--o-font); font-variant-numeric: tabular-nums; color: var(--o-ink); }
@@ -408,22 +419,55 @@
       <button class="submit" id="o-submit" type="button" disabled>Submit</button>
       <div class="orders" id="o-batches"></div>
     </div>
-    <div class="stake" id="stake" hidden>
-      <span class="lbl">Stake PAPER</span>
-      <div id="st-bal" class="small"></div>
-      <div class="stakerow">
-        <input id="st-amount" inputmode="decimal" placeholder="Amount" aria-label="PAPER to stake" autocomplete="off" />
-        <button class="link" id="st-max" type="button">Max</button>
-        <button class="action" id="st-submit" type="button" disabled>Stake</button>
-      </div>
-      <div id="st-msg" class="small" hidden></div>
-    </div>
     <div class="foot"><span id="state">connecting…</span><span id="block"></span></div>
+  </div>
+</div>
+<div class="wrap pwidget" id="pw">
+  <div class="pill" id="pw-pill" title="PAPER staking: click to expand, drag to move">
+    <span class="ptoken">P</span><span id="pw-pill-text">PAPER</span>
+  </div>
+  <div class="panel" id="pw-panel" hidden>
+    <div class="head" id="pw-head">
+      <span class="ptoken">P</span>
+      <span class="title">PAPER staking</span>
+      <button class="btn" id="pw-collapse" title="Collapse" aria-label="Collapse">–</button>
+    </div>
+    <div class="grid">
+      <div class="cell"><span class="lbl">Total supply</span><span class="val" id="pw-supply">--</span></div>
+      <div class="cell"><span class="lbl">Total staked</span><span class="val" id="pw-total">--</span><span class="small" id="pw-total-pct"></span></div>
+    </div>
+    <div id="pw-connect" class="pwsec" hidden>
+      <span class="small">Connect your wallet to stake PAPER and claim rewards.</span>
+      <div class="actions"><button class="action" id="pw-connect-btn" type="button">Connect wallet</button></div>
+    </div>
+    <div id="pw-acct" hidden>
+      <div class="grid">
+        <div class="cell"><span class="lbl">In your wallet</span><span class="val" id="pw-wallet">--</span></div>
+        <div class="cell"><span class="lbl">Your stake</span><span class="val" id="pw-staked">--</span><span class="small" id="pw-share"></span></div>
+      </div>
+      <div class="pwsec">
+        <span class="lbl">Stake</span>
+        <div class="stakerow">
+          <input id="st-amount" inputmode="decimal" placeholder="PAPER amount" aria-label="PAPER to stake" autocomplete="off" />
+          <button class="link" id="st-max" type="button">Max</button>
+          <button class="action" id="st-submit" type="button" disabled>Stake</button>
+        </div>
+        <div id="st-msg" class="small" hidden></div>
+      </div>
+      <div class="pwsec">
+        <div class="row">
+          <span><span class="lbl">Rewards (USDC)</span><span class="val" id="pw-rewards">--</span></span>
+          <button class="action" id="cl-submit" type="button" disabled>Claim</button>
+        </div>
+        <div id="cl-msg" class="small" hidden></div>
+      </div>
+    </div>
   </div>
 </div>`;
   const $ = (id) => root.getElementById(id);
 
-  let settings = { collapsed: false, left: 16, bottom: 16 };
+  // pw: the PAPER widget, by default a pill to the right of the main panel.
+  let settings = { collapsed: false, left: 16, bottom: 16, pw: { collapsed: true, left: 336, bottom: 16 } };
   const history = []; // [{t, pending}]
   let snapshot = null;
   let streamState = 'connecting';
@@ -566,12 +610,21 @@
 
   function setMsg(text, cls = '') { sk.msg = text; sk.msgClass = cls; renderSession(); }
 
-  // ---- PAPER staking: the master wallet signs each Stake (Rabby / Ledger); the session key isn't involved ----
+  // ---- PAPER widget: supply, your stake, Stake and Claim. The master wallet signs both (Rabby / Ledger);
+  // the session key isn't involved. ----
   const stake = { busy: false, msg: '', cls: '', intentId: null, amountRaw: null };
+  const claim = { busy: false, msg: '', cls: '', intentId: null, amountRaw: null };
+  let paperInfo = null; // { supply, staked } raw, from /query/protocol/summary
   const fmtPaper = (raw) => (Number(raw) / 1e18).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  const fmtCompact = (raw) => {
+    const v = Number(raw) / 1e18;
+    return v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : v.toFixed(2);
+  };
+  const fmtUsdc = (raw) => `$${(Number(raw) / 1e18).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   // Exact decimal string for a raw amount (for the input; no float rounding), e.g. 3492.186503347517471804.
   const fromWad = (raw) => { const f = (raw % WAD).toString().padStart(18, '0').replace(/0+$/, ''); return `${raw / WAD}${f ? `.${f}` : ''}`; };
   const pendingStakes = () => [...acct.ops.values()].filter((o) => o.action === 'paperStake' && o.amountRaw !== null).reduce((a, o) => a + o.amountRaw, 0n);
+  const pendingClaim = () => [...acct.ops.values()].some((o) => o.action === 'paperClaim');
   // What can still be staked: wallet PAPER minus stakes already waiting in the queue (as the web app checks).
   const freePaper = () => { if (!acct.paper) return null; const f = acct.paper.balance - pendingStakes(); return f > 0n ? f : 0n; };
   // Claimable USDC rewards: pendingBase + max(0, staked × accRewardPerShare / 1e27 − rewardDebt).
@@ -580,6 +633,15 @@
     const accrued = (acct.paper.staked * trading.accRewardRaw) / 10n ** 27n - acct.paper.rewardDebt;
     return acct.paper.pendingBase + (accrued > 0n ? accrued : 0n);
   };
+
+  async function loadPaperInfo() {
+    try {
+      const d = await (await fetch(`${API}/query/protocol/summary`, { cache: 'no-store' })).json();
+      if (d?.paper?.supply === undefined) throw new Error('no PAPER figures');
+      paperInfo = { supply: BigInt(d.paper.supply), staked: BigInt(d.paper.staked) };
+    } catch { /* keep the last figures; retried next minute */ }
+    renderPaper();
+  }
 
   function readStake() {
     const v = $('st-amount').value.trim().replace(/,/g, '');
@@ -596,25 +658,93 @@
     return { amountRaw };
   }
 
-  function renderStake() {
-    $('stake').hidden = !sk.master;
-    if (!sk.master) return;
+  // Why Claim isn't possible right now, or null.
+  function claimBlocked() {
+    if (!trading || trading.error) return 'Loading Papertrade’s rules…';
+    if (trading.paused.includes('paperClaim')) return 'Papertrade has paused claiming right now.';
+    if (pendingClaim()) return 'A claim is already waiting in the queue.';
+    const c = claimable();
+    if (c === null) return 'Loading your rewards…';
+    if (c <= 0n) return 'No rewards to claim yet.';
+    return null;
+  }
+
+  const showMsg = (id, text, cls) => { $(id).hidden = !text; $(id).textContent = text ?? ''; $(id).className = `small ${cls ?? ''}`; };
+
+  function renderPaper() {
+    // Protocol-wide figures (no wallet needed).
+    $('pw-supply').textContent = paperInfo ? `${fmtCompact(paperInfo.supply)}` : '--';
+    $('pw-supply').title = paperInfo ? `${fmtPaper(paperInfo.supply)} PAPER` : '';
+    $('pw-total').textContent = paperInfo ? `${fmtCompact(paperInfo.staked)}` : '--';
+    $('pw-total').title = paperInfo ? `${fmtPaper(paperInfo.staked)} PAPER` : '';
+    $('pw-total-pct').textContent = paperInfo && paperInfo.supply > 0n ? `${(Number((paperInfo.staked * 10000n) / paperInfo.supply) / 100).toFixed(2)}% of supply` : '';
+    $('pw-connect').hidden = !!sk.master;
+    $('pw-acct').hidden = !sk.master;
     const p = acct.paper, c = claimable(), pend = pendingStakes();
-    $('st-bal').textContent = p
-      ? `wallet ${fmtPaper(p.balance)} · staked ${fmtPaper(p.staked)}${pend > 0n ? ` (+${fmtPaper(pend)} queued)` : ''}${c !== null ? ` · rewards $${(Number(c) / 1e18).toFixed(2)}` : ''}`
-      : 'loading…';
+    $('pw-pill-text').textContent = sk.master && p
+      ? `PAPER · staked ${fmtCompact(p.staked)}${c !== null ? ` · ${fmtUsdc(c)}` : ''}`
+      : paperInfo ? `PAPER · supply ${fmtCompact(paperInfo.supply)}` : 'PAPER';
+    if (!sk.master) return;
+
+    // Your PAPER.
+    $('pw-wallet').textContent = p ? fmtPaper(p.balance) : '--';
+    $('pw-staked').textContent = p ? fmtPaper(p.staked) : '--';
+    $('pw-share').textContent = p && paperInfo?.staked > 0n
+      ? `${pend > 0n ? `+${fmtPaper(pend)} queued · ` : ''}${((Number(p.staked) / Number(paperInfo.staked)) * 100).toFixed(4)}% of all staked`
+      : pend > 0n ? `+${fmtPaper(pend)} queued` : '';
+
+    // Stake: a problem with what's typed comes first; otherwise the last step of the stake flow.
     const r = readStake();
     $('st-submit').disabled = stake.busy || !!r.empty || !!r.error;
     $('st-submit').textContent = stake.busy ? 'Staking…' : 'Stake';
     $('st-max').disabled = stake.busy || !freePaper();
-    // A problem with what's typed comes first; otherwise the last step of the stake flow.
     const invalid = !stake.busy && r.error && !r.empty;
-    const msg = invalid ? r.error : stake.msg;
-    $('st-msg').hidden = !msg;
-    $('st-msg').textContent = msg;
-    $('st-msg').className = `small ${invalid ? 'bad' : stake.cls}`;
+    showMsg('st-msg', invalid ? r.error : stake.msg, invalid ? 'bad' : stake.cls);
+
+    // Claim.
+    $('pw-rewards').textContent = c === null ? '--' : fmtUsdc(c);
+    const blocked = claimBlocked();
+    $('cl-submit').disabled = claim.busy || !!blocked;
+    $('cl-submit').textContent = claim.busy ? 'Claiming…' : 'Claim';
+    showMsg('cl-msg', claim.msg || (blocked && blocked !== 'No rewards to claim yet.' && !blocked.startsWith('Loading') ? blocked : ''), claim.msg ? claim.cls : 'warn');
   }
-  const setStakeMsg = (text, cls = '') => { stake.msg = text; stake.cls = cls; renderStake(); };
+  const renderStake = renderPaper; // older call sites
+  const setStakeMsg = (text, cls = '') => { stake.msg = text; stake.cls = cls; renderPaper(); };
+  const setClaimMsg = (text, cls = '') => { claim.msg = text; claim.cls = cls; renderPaper(); };
+
+  // Have the master wallet sign a prepared Stake or Claim, check it, and send it. Returns { intentId, state };
+  // throws with Papertrade's reason (as `json`) if it's refused.
+  async function sendWalletSigned(kind, extra, label, say) {
+    say('Preparing…');
+    const { typedData } = await worker(`${kind}:prepare`, extra);
+    say(`Approve "${typedData.primaryType}"${label ? ` for ${label}` : ''} in Rabby, then confirm on your Ledger.`, 'warn');
+    const signature = await bridge('sign', { address: sk.master, typedData }, 5 * 60_000);
+    say('Checking the signature…');
+    const { body, intentId } = await worker(`${kind}:finalize`, { signature });
+    say('Sending to Papertrade…');
+    const res = await fetch(`${API}/intents`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok || json.error || json.ok === false) throw Object.assign(new Error('refused'), { json, status: res.status });
+    return { intentId: json.intentId ?? intentId, state: json.state ?? 'queued' };
+  }
+
+  function paperError(err, what) {
+    if (err?.code === 4001 || /reject|denied|cancel/i.test(err?.message ?? '')) return 'You declined in the wallet. Nothing was sent.';
+    if (!err?.json) return err?.message ?? String(err);
+    const { json, status } = err, code = json.code ?? json.error ?? `HTTP ${status}`;
+    return {
+      below_minimum_paper_stake: `Below Papertrade's minimum stake${json.minimumPaperStakeRaw ? ` of ${fmtPaper(BigInt(json.minimumPaperStakeRaw))} PAPER` : ''}.`,
+      intake_action_paused: `Papertrade has paused ${what === 'stake' ? 'staking' : 'claiming'} right now.`,
+      deadline_expired: 'The signed request expired. Try again.',
+      invalid_intent: 'Papertrade rejected the signed message as invalid.',
+      unauthorized_intent: 'Papertrade says the signature does not match this account.',
+      rate_limited: 'Papertrade is rate-limiting requests. Wait a minute and try again.',
+    }[code] ?? {
+      paperBalance: 'Not enough PAPER in the wallet.',
+      noRewards: 'No rewards to claim.',
+      alreadyQueued: `A ${what} is already waiting in the queue.`,
+    }[json.reason] ?? `Papertrade refused it: ${refusal(json, status)}`;
+  }
 
   async function doStake() {
     const r = readStake();
@@ -629,38 +759,41 @@
     stake.busy = true;
     stake.intentId = null;
     try {
-      setStakeMsg('Preparing…');
-      const { typedData } = await worker('stake:prepare', { amountRaw: amountRaw.toString() });
-      setStakeMsg(`Approve "Stake" for ${fmtPaper(amountRaw)} PAPER in Rabby, then confirm on your Ledger.`, 'warn');
-      const signature = await bridge('sign', { address: sk.master, typedData }, 5 * 60_000);
-      setStakeMsg('Checking the signature…');
-      const { body, intentId } = await worker('stake:finalize', { signature });
-      setStakeMsg('Sending to Papertrade…');
-      const res = await fetch(`${API}/intents`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json.error || json.ok === false) {
-        const code = json.code ?? json.error ?? `HTTP ${res.status}`;
-        const why = {
-          below_minimum_paper_stake: `Below Papertrade's minimum stake${json.minimumPaperStakeRaw ? ` of ${fmtPaper(BigInt(json.minimumPaperStakeRaw))} PAPER` : ''}.`,
-          intake_action_paused: 'Papertrade has paused staking right now.',
-          deadline_expired: 'The signed request expired. Try again.',
-          invalid_intent: 'Papertrade rejected the signed message as invalid.',
-          unauthorized_intent: 'Papertrade says the signature does not match this account.',
-          rate_limited: 'Papertrade is rate-limiting requests. Wait a minute and try again.',
-        }[code] ?? { paperBalance: 'Not enough PAPER in the wallet.', alreadyQueued: 'A stake is already waiting in the queue.' }[json.reason];
-        throw new Error(why ?? `Papertrade refused it: ${refusal(json, res.status)}`);
-      }
-      stake.intentId = json.intentId ?? intentId;
+      const sent = await sendWalletSigned('stake', { amountRaw: amountRaw.toString() }, `${fmtPaper(amountRaw)} PAPER`, setStakeMsg);
+      stake.intentId = sent.intentId;
       stake.amountRaw = amountRaw;
       $('st-amount').value = '';
-      setStakeMsg(`Submitted (${json.state ?? 'queued'}). ${fmtPaper(amountRaw)} PAPER is staked once Papertrade executes it, usually within a minute.`, 'ok');
+      setStakeMsg(`Submitted (${sent.state}). ${fmtPaper(amountRaw)} PAPER is staked once Papertrade executes it, usually within a minute.`, 'ok');
     } catch (err) {
-      const declined = err?.code === 4001 || /reject|denied|cancel/i.test(err?.message ?? '');
-      setStakeMsg(declined ? 'You declined in the wallet. Nothing was sent.' : err.message, 'bad');
+      setStakeMsg(paperError(err, 'stake'), 'bad');
       await worker('stake:cancel').catch(() => {});
     } finally {
       stake.busy = false;
-      renderStake();
+      renderPaper();
+    }
+  }
+
+  async function doClaim() {
+    if (claim.busy || claimBlocked()) return;
+    const amountRaw = claimable();
+    const ok = confirm(
+      `Claim your PAPER staking rewards (about ${fmtUsdc(amountRaw)} USDC)?\n\n` +
+      `Your wallet (${short(sk.master)}) signs a "Claim" message on the PaperStaking contract (0xaad6…f016, HyperEVM). ` +
+      `It has no amount: it claims everything owed when Papertrade executes it. Confirm it on your Ledger.`);
+    if (!ok) return;
+    claim.busy = true;
+    claim.intentId = null;
+    try {
+      const sent = await sendWalletSigned('claim', {}, '', setClaimMsg);
+      claim.intentId = sent.intentId;
+      claim.amountRaw = amountRaw;
+      setClaimMsg(`Submitted (${sent.state}). The rewards are claimed once Papertrade executes it, usually within a minute.`, 'ok');
+    } catch (err) {
+      setClaimMsg(paperError(err, 'claim'), 'bad');
+      await worker('claim:cancel').catch(() => {});
+    } finally {
+      claim.busy = false;
+      renderPaper();
     }
   }
 
@@ -670,9 +803,57 @@
     else setStakeMsg(`The stake of ${amt}PAPER ${outcome}. Nothing was staked.`, 'bad');
     stake.intentId = null;
   }
+  function onClaimOutcome(outcome) {
+    if (outcome === 'succeeded') setClaimMsg(`Claimed${claim.amountRaw !== null ? ` about ${fmtUsdc(claim.amountRaw)}` : ''} in USDC rewards.`, 'ok');
+    else setClaimMsg(`The claim ${outcome}. Nothing was claimed.`, 'bad');
+    claim.intentId = null;
+  }
+
+  // Float the widget: its own position and collapsed state (settings.pw), dragged by its pill or header.
+  function applyPwLayout() {
+    const el = $('pw');
+    if (full?.on) return; // docked in the full-screen sidebar
+    const st = settings.pw;
+    $('pw-pill').hidden = !st.collapsed;
+    $('pw-panel').hidden = st.collapsed;
+    el.style.left = `${st.left}px`;
+    el.style.bottom = `${st.bottom}px`;
+    const r = el.getBoundingClientRect();
+    el.style.left = `${Math.max(0, Math.min(st.left, window.innerWidth - r.width - 8))}px`;
+    el.style.bottom = `${Math.max(0, Math.min(st.bottom, window.innerHeight - r.height - 8))}px`;
+  }
+  window.addEventListener('resize', () => applyPwLayout());
+  new ResizeObserver(() => applyPwLayout()).observe($('pw'));
+  function pwDraggable(handle, onClick) {
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || e.target.closest('.btn') || full?.on) return;
+      const startX = e.clientX, startY = e.clientY, r = $('pw').getBoundingClientRect();
+      let moved = false;
+      handle.setPointerCapture(e.pointerId);
+      const move = (ev) => {
+        const dx = ev.clientX - startX, dy = ev.clientY - startY;
+        if (!moved && Math.hypot(dx, dy) < 4) return;
+        moved = true;
+        settings.pw.left = Math.round(Math.min(Math.max(0, r.left + dx), window.innerWidth - r.width));
+        settings.pw.bottom = Math.round(Math.min(Math.max(0, window.innerHeight - r.bottom - dy), window.innerHeight - r.height));
+        applyPwLayout();
+      };
+      const up = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.removeEventListener('pointerup', up);
+        if (moved) storage.set(settings);
+        else onClick?.();
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up);
+    });
+  }
+  pwDraggable($('pw-pill'), () => { settings.pw.collapsed = false; applyPwLayout(); storage.set(settings); });
+  pwDraggable($('pw-head'));
+  $('pw-collapse').addEventListener('click', () => { settings.pw.collapsed = true; applyPwLayout(); storage.set(settings); });
 
   function renderSession() {
-    renderStake();
+    renderPaper();
     const status = $('sk-status'), detail = $('sk-detail'), action = $('sk-action'), remove = $('sk-remove'), msg = $('sk-msg');
     msg.hidden = !sk.msg;
     msg.textContent = sk.msg;
@@ -855,6 +1036,7 @@
       for (const [id, outcome] of m.intentOutcomes ?? []) {
         if (id === sk.local?.pending?.intentId && outcome !== 'succeeded') sk.outcome = outcome;
         if (id === stake.intentId) onStakeOutcome(outcome);
+        if (id === claim.intentId) onClaimOutcome(outcome);
         onOutcome(id, outcome);
       }
       revision = m.accountRevision;
@@ -1524,6 +1706,8 @@
   for (const ev of ['keydown', 'keyup', 'keypress']) $('st-amount').addEventListener(ev, (e) => { e.stopPropagation(); if (ev === 'keydown' && e.key === 'Enter') doStake(); });
   $('st-max').addEventListener('click', () => { const f = freePaper(); if (f) { $('st-amount').value = fromWad(f); renderStake(); } });
   $('st-submit').addEventListener('click', doStake);
+  $('cl-submit').addEventListener('click', doClaim);
+  $('pw-connect-btn').addEventListener('click', () => run(connect));
   $('o-batches').addEventListener('click', (e) => {
     const b = e.target.closest('[data-cancel-batch]');
     if (b) withdrawBatch(Number(b.dataset.cancelBatch), 'cancelled while waiting');
@@ -1820,6 +2004,9 @@
     $('pill').hidden = true;
     $('panel').hidden = false;
     $('f-aside').appendChild($('panel')); // the same status / session / order builder, now as the sidebar
+    $('pw').classList.add('docked'); // and the PAPER widget under it
+    $('pw-panel').hidden = false;
+    $('f-aside').appendChild($('pw'));
     document.documentElement.style.overflow = 'hidden'; // the dashboard covers the page; don't scroll it underneath
     watchBbo();
     loadWinFee();
@@ -1894,9 +2081,12 @@
     try { return (await chrome.runtime.sendMessage({ type: 'ui:isFull' }))?.result === true; } catch { return false; }
   };
   Promise.all([storage.get(), isFullTab()]).then(([s, fullTab]) => {
-    settings = { ...settings, ...s };
+    settings = { ...settings, ...s, pw: { ...settings.pw, ...(s.pw ?? {}) } };
     (document.body ?? document.documentElement).appendChild(host);
     applyLayout();
+    applyPwLayout();
+    loadPaperInfo();
+    setInterval(loadPaperInfo, 60_000);
     render();
     start();
     setInterval(render, 1000); // keeps "data Ns old" and the stale state current

@@ -2,7 +2,7 @@
 //
 // Trading (OpenPosition, Close, CancelIntent) is signed by a session key on behalf of the master wallet
 // (`user`). The session key is authorized once by a RegisterSessionKey intent that the master wallet signs.
-// PAPER staking (Stake) is signed by the master wallet itself, on the PaperStaking domain.
+// PAPER staking (Stake, Claim) is signed by the master wallet itself, on the PaperStaking domain.
 
 import { concat, hashTypedData, keccak256, recoverAddress, parseSignature, stringToBytes, type Hex } from 'viem';
 import type { LocalAccount } from 'viem/accounts';
@@ -47,6 +47,7 @@ const TYPES = {
     { name: 'user', type: 'address' }, { name: 'amount', type: 'uint256' },
     { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint64' },
   ],
+  Claim: [{ name: 'user', type: 'address' }, { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint64' }],
   CancelIntent: [{ name: 'user', type: 'address' }, { name: 'intentId', type: 'bytes32' }, { name: 'deadline', type: 'uint256' }],
 } as const;
 
@@ -58,6 +59,7 @@ const ROUTES: Record<PrimaryType, { action: string; domain: keyof typeof DOMAINS
   OpenPosition: { action: 'openPosition', domain: 'exchange' },
   Close: { action: 'closePositions', domain: 'exchange' },
   Stake: { action: 'paperStake', domain: 'paper' },
+  Claim: { action: 'paperClaim', domain: 'paper' },
   CancelIntent: { action: 'cancelIntent', domain: 'cancellation' }, // not a POST /intents action; see cancelIntent()
 };
 
@@ -155,4 +157,9 @@ export async function cancelIntent(session: LocalAccount, user: string, intentId
 export function stakeMessage(user: string, amount: bigint, nonces: NonceSource, nowMs = Date.now()): Message {
   if (amount <= 0n || amount >= 1n << 256n) throw new Error('Invalid PAPER amount');
   return { user, amount, nonce: nonces.take('paper'), deadline: deadline(nowMs) };
+}
+
+/** The Claim message for this account's USDC staking rewards. The master wallet signs it; nonce scope `paper`. */
+export function claimMessage(user: string, nonces: NonceSource, nowMs = Date.now()): Message {
+  return { user, nonce: nonces.take('paper'), deadline: deadline(nowMs) };
 }
