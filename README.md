@@ -6,6 +6,7 @@ the Hyperliquid order-book mid).
 A small floating panel on **exchange.papertrade.xyz** that shows how backed up Papertrade's order queue is,
 so you can check before sending an order. It can also create a **session key** for this extension, which
 your wallet (e.g. Rabby with a Ledger) authorizes with one signature, and **open positions** with that key.
+It can also **stake PAPER** from your wallet (see [Stake PAPER](#stake-paper)).
 
 It shows the same numbers as the **Status** tab on Papertrade's trade page, without having to switch tabs:
 
@@ -171,6 +172,24 @@ Example, distance 10, a long and a short:
 - **Ranks move as the queue moves.** Papertrade fills larger orders first, so new big orders can slip in
   between yours. Pick a distance with some room for that, and watch congestion.
 - **Cancelling a queued order is free**, and so is an order that expires unfilled.
+
+## Stake PAPER
+
+The panel's **Stake PAPER** section stakes PAPER from your wallet. It appears as soon as your wallet is
+connected; it doesn't use the session key.
+
+- It shows the PAPER in your wallet, how much is staked (plus any stake still in the queue) and the USDC
+  rewards you can claim (`pendingBase + staked × accRewardPerShare / 1e27 − rewardDebt`).
+- Type an amount, or press **Max** for your whole wallet balance (exact to the last decimal), then **Stake**.
+  It checks the amount first: at least Papertrade's minimum stake (currently **1,000 PAPER**), and no more than
+  your wallet balance minus stakes already in the queue. It also checks that Papertrade hasn't paused staking.
+- **Every stake is signed by your wallet**, like the session key: Rabby opens a `Stake` request (domain
+  `PaperStaking`, version `1`, chain 999, contract `0xaad6c7b0cc3014fc80ffedae0ed7ce5967b0f016`) with `user` =
+  your address and `amount` in 18-decimal units (1,500 PAPER = `1500000000000000000000`). Check it and confirm on
+  your Ledger. The extension checks the signature came from your wallet before sending it.
+- It's sent to Papertrade's queue and shows **Submitted (queued)**, then **Staked 1,500 PAPER** once it executes
+  (or why it didn't). Staking has its own nonce counter, separate from trading.
+- Staked PAPER earns a share of Papertrade's fees, paid in USDC. Unstaking and claiming are done on Papertrade.
 
 ## Full screen
 

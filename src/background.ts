@@ -12,7 +12,7 @@
 
 import { generatePrivateKey, privateKeyToAccount } from 'viem/accounts';
 import type { Hex } from 'viem';
-import { cancelIntent, closePositions, openPosition, registrationMessage, seal, typedData, type NonceSource } from './intents';
+import { cancelIntent, closePositions, openPosition, registrationMessage, seal, stakeMessage, typedData, type NonceSource } from './intents';
 
 type Master = string; // lowercase 0x address
 
@@ -28,6 +28,8 @@ interface SessionRecord {
 
 const STORE = 'papertradeSessions'; // chrome.storage.local key: { [master]: SessionRecord }
 const NONCES = 'papertradeNonces'; // { [master]: next session-scope nonce }
+const PAPER_NONCES = 'papertradePaperNonces'; // { [master]: next paper-scope nonce (staking) }
+const STAKES = 'papertradeStakes'; // { [master]: { message, createdAt } }: a stake waiting for the wallet's signature
 
 // ---- Encryption at rest ----
 
@@ -73,15 +75,16 @@ async function save(rec: SessionRecord) {
   await chrome.storage.local.set({ [STORE]: all });
 }
 
-// Session-scope nonces, persisted. Like the web app, a new counter starts at a random 24-bit value × 256.
-async function takeNonce(master: Master): Promise<bigint> {
-  const all = ((await chrome.storage.local.get(NONCES))[NONCES] as Record<Master, string>) ?? {};
+// Nonces, persisted, one counter per scope (`store`). Like the web app, a new counter starts at a random
+// 24-bit value × 256.
+async function takeNonce(master: Master, store = NONCES): Promise<bigint> {
+  const all = ((await chrome.storage.local.get(store))[store] as Record<Master, string>) ?? {};
   const rand = new Uint8Array(3);
   crypto.getRandomValues(rand);
   const fresh = (BigInt((rand[0]! << 16) | (rand[1]! << 8) | rand[2]!) || 1n) * 256n;
   const next = all[master] ? BigInt(all[master]) : fresh;
   all[master] = String(next + 1n);
-  await chrome.storage.local.set({ [NONCES]: all });
+  await chrome.storage.local.set({ [store]: all });
   return next;
 }
 
@@ -114,8 +117,12 @@ async function prepare(master: Master, replace: boolean) {
   const message = registrationMessage(master, rec.address, nonces);
   rec.pending = { message: jsonSafe(message), createdAt: Date.now() };
   await save(rec);
-  // eth_signTypedData_v4 wants EIP712Domain spelled out (viem adds it implicitly when hashing; same digest).
-  const td = jsonSafe(typedData('RegisterSessionKey', message));
+  return { sessionAddress: rec.address, typedData: forWallet(typedData('RegisterSessionKey', message)) };
+}
+
+// eth_signTypedData_v4 wants EIP712Domain spelled out (viem adds it implicitly when hashing; same digest).
+function forWallet(data: unknown) {
+  const td = jsonSafe(data);
   td.types = {
     EIP712Domain: [
       { name: 'name', type: 'string' }, { name: 'version', type: 'string' },
@@ -123,7 +130,7 @@ async function prepare(master: Master, replace: boolean) {
     ],
     ...td.types,
   };
-  return { sessionAddress: rec.address, typedData: td };
+  return td;
 }
 
 /** Check the master wallet's signature and return the exact POST /intents body. */
@@ -196,6 +203,37 @@ async function signClose(master: Master, ids: unknown) {
   return { intentId: intent.intentId, body: { action: intent.action, signed: intent.signed } };
 }
 
+// ---- PAPER staking: signed by the master wallet (Rabby / Ledger), not the session key ----
+
+/** Build the Stake message for `amountRaw` PAPER and return the typed data for the wallet to sign. */
+async function prepareStake(master: Master, amountRaw: unknown) {
+  if (typeof amountRaw !== 'string' || !/^[1-9]\d{0,77}$/.test(amountRaw)) throw new Error('Invalid PAPER amount');
+  const nonce = await takeNonce(master, PAPER_NONCES);
+  const message = stakeMessage(master, BigInt(amountRaw), { take: () => nonce } satisfies NonceSource);
+  const all = ((await chrome.storage.local.get(STAKES))[STAKES] as Record<Master, unknown>) ?? {};
+  all[master] = { message: jsonSafe(message), createdAt: Date.now() };
+  await chrome.storage.local.set({ [STAKES]: all });
+  return { typedData: forWallet(typedData('Stake', message)) };
+}
+
+/** Check that the master wallet signed the prepared Stake and return the exact POST /intents body. */
+async function finalizeStake(master: Master, signature: Hex) {
+  const all = ((await chrome.storage.local.get(STAKES))[STAKES] as Record<Master, { message: Record<string, string> }>) ?? {};
+  const pending = all[master];
+  if (!pending) throw new Error('No stake is waiting for a signature. Start again.');
+  delete all[master]; // one signature per prepared stake
+  await chrome.storage.local.set({ [STAKES]: all });
+  if (BigInt(pending.message.deadline!) * 1000n < BigInt(Date.now())) throw new Error('The stake request expired (1 hour). Start again.');
+  const intent = await seal('Stake', fromWire(pending.message) as never, { signature, expectedSigner: master });
+  return { intentId: intent.intentId, body: { action: intent.action, signed: intent.signed } };
+}
+
+async function cancelStake(master: Master) {
+  const all = ((await chrome.storage.local.get(STAKES))[STAKES] as Record<Master, unknown>) ?? {};
+  delete all[master];
+  await chrome.storage.local.set({ [STAKES]: all });
+}
+
 /** Sign a CancelIntent for one of this account's queued intents. */
 async function signCancel(master: Master, intentId: unknown) {
   if (typeof intentId !== 'string' || !/^0x[0-9a-f]{64}$/.test(intentId)) throw new Error('Invalid intent id');
@@ -252,6 +290,9 @@ chrome.runtime.onMessage.addListener((msg, sender, reply) => {
     'order:open': () => signOpen(master, msg),
     'order:close': () => signClose(master, msg.positionIds),
     'order:cancel': () => signCancel(master, msg.intentId),
+    'stake:prepare': () => prepareStake(master, msg.amountRaw),
+    'stake:finalize': () => finalizeStake(master, msg.signature),
+    'stake:cancel': () => cancelStake(master),
   };
   const fn = run[msg?.type];
   if (!fn) return false;

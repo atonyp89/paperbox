@@ -908,11 +908,12 @@ The repo is the Paperbox Chrome extension; everything below runs in the browser.
 | File | What it has |
 |---|---|
 | `src/intents.ts` | EIP-712 domains and types, wire encoding, intent id, builders for open / close / register session key / cancel |
-| `src/background.ts` | Session-key generation and encrypted storage (AES-GCM, non-extractable key in IndexedDB), registration flow, signing opens, closes and cancels after re-checking every field |
+| `src/background.ts` | Session-key generation and encrypted storage (AES-GCM, non-extractable key in IndexedDB), registration flow, signing opens, closes and cancels after re-checking every field, preparing and checking wallet-signed stakes |
 | `src/content.js` | Market terms, account stream (patches, reconnect, watchdog), pressure socket, Hyperliquid BBO marks, all valuation math (haircut, win fee, bust risk), queue ranks, OI headroom, batch guards, the full-screen dashboard |
 | `src/bridge.js` | Finding the wallet through EIP-6963 and relaying signature requests from the page |
 
-PAPER staking (`Stake`, `Claim`; see section 10) is documented but not implemented here.
+`Stake` is built in `src/intents.ts` (`stakeMessage`) and signed by the master wallet through `src/bridge.js`;
+`Unstake` and `Claim` are documented (section 10) but not implemented here.
 
 ---
 

@@ -2,23 +2,29 @@
 //
 // Trading (OpenPosition, Close, CancelIntent) is signed by a session key on behalf of the master wallet
 // (`user`). The session key is authorized once by a RegisterSessionKey intent that the master wallet signs.
+// PAPER staking (Stake) is signed by the master wallet itself, on the PaperStaking domain.
 
 import { concat, hashTypedData, keccak256, recoverAddress, parseSignature, stringToBytes, type Hex } from 'viem';
 import type { LocalAccount } from 'viem/accounts';
 
-/** Where the next nonce comes from. The web app picks a random 24-bit value × 256 and counts up from it. */
+/**
+ * Where the next nonce comes from. The web app keeps one counter per scope (`session` for the exchange domain,
+ * `paper` for staking), starting at a random 24-bit value × 256 and counting up.
+ */
 export interface NonceSource {
-  take(scope: 'session'): bigint;
+  take(scope: 'session' | 'paper'): bigint;
 }
 
 export const CHAIN_ID = 999; // HyperEVM
 export const EXCHANGE = '0x6cd5661646289fb6e65ea5c032310fded797d0a2';
+export const PAPER_STAKING = '0xaad6c7b0cc3014fc80ffedae0ed7ce5967b0f016';
 const FEE_ADDRESS = '0x0000000000000000000000000000000000000000';
 const DEADLINE_S = 3600; // the web app signs every intent valid for one hour
 export const SESSION_TTL_MS = 30 * 24 * 3600_000; // and registers session keys for 30 days
 
 const DOMAINS = {
   exchange: { name: 'String', version: '1', chainId: CHAIN_ID, verifyingContract: EXCHANGE },
+  paper: { name: 'PaperStaking', version: '1', chainId: CHAIN_ID, verifyingContract: PAPER_STAKING },
   // Cancelling a queued intent has its own domain (on the exchange contract).
   cancellation: { name: 'PaperTrade Intent Cancel', version: '2', chainId: CHAIN_ID, verifyingContract: EXCHANGE },
 } as const;
@@ -37,6 +43,10 @@ const TYPES = {
     { name: 'user', type: 'address' }, { name: 'positionIds', type: 'uint256[]' },
     { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint64' },
   ],
+  Stake: [
+    { name: 'user', type: 'address' }, { name: 'amount', type: 'uint256' },
+    { name: 'nonce', type: 'uint256' }, { name: 'deadline', type: 'uint64' },
+  ],
   CancelIntent: [{ name: 'user', type: 'address' }, { name: 'intentId', type: 'bytes32' }, { name: 'deadline', type: 'uint256' }],
 } as const;
 
@@ -47,6 +57,7 @@ const ROUTES: Record<PrimaryType, { action: string; domain: keyof typeof DOMAINS
   RegisterSessionKey: { action: 'registerSessionKey', domain: 'exchange' },
   OpenPosition: { action: 'openPosition', domain: 'exchange' },
   Close: { action: 'closePositions', domain: 'exchange' },
+  Stake: { action: 'paperStake', domain: 'paper' },
   CancelIntent: { action: 'cancelIntent', domain: 'cancellation' }, // not a POST /intents action; see cancelIntent()
 };
 
@@ -138,4 +149,10 @@ export async function cancelIntent(session: LocalAccount, user: string, intentId
   const sealed = await seal('CancelIntent', { user, intentId, deadline: deadline() }, { signer: session });
   const { intentId: _omit, ...body } = sealed.signed;
   return { path: `/intents/${intentId}/cancel`, body };
+}
+
+/** The Stake message for `amount` PAPER (raw, 18 decimals). The master wallet signs it; nonce scope `paper`. */
+export function stakeMessage(user: string, amount: bigint, nonces: NonceSource, nowMs = Date.now()): Message {
+  if (amount <= 0n || amount >= 1n << 256n) throw new Error('Invalid PAPER amount');
+  return { user, amount, nonce: nonces.take('paper'), deadline: deadline(nowMs) };
 }

@@ -204,6 +204,13 @@
   .field input { all: unset; box-sizing: border-box; width: 100%; min-width: 0; background: var(--o-raised); border: 1px solid var(--o-border); border-radius: 4px;
     padding: 5px 8px; font: 600 13px var(--o-font); font-variant-numeric: tabular-nums; color: var(--o-ink); }
   .field input:focus { border-color: var(--o-chart); }
+  .stake { padding: 8px 12px 10px; border-top: 1px solid var(--o-border); display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
+  .stake[hidden] { display: none; }
+  .stakerow { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .stakerow input { all: unset; box-sizing: border-box; flex: 1 1 0; width: 0; min-width: 0; background: var(--o-raised); border: 1px solid var(--o-border); border-radius: 4px;
+    padding: 5px 8px; font: 600 13px var(--o-font); font-variant-numeric: tabular-nums; color: var(--o-ink); }
+  .stakerow input:focus { border-color: var(--o-chart); }
+  .stakerow .action:disabled { opacity: .45; cursor: default; }
   .sides { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   .side { all: unset; text-align: center; cursor: pointer; padding: 7px 0; border-radius: 4px; font-weight: 700; font-size: 13px; color: var(--o-raised); }
   .side.long { background: var(--o-pos); } .side.long:hover { background: color-mix(in srgb, var(--o-pos) 85%, black); }
@@ -398,6 +405,16 @@
       <button class="submit" id="o-submit" type="button" disabled>Submit</button>
       <div class="orders" id="o-batches"></div>
     </div>
+    <div class="stake" id="stake" hidden>
+      <span class="lbl">Stake PAPER</span>
+      <div id="st-bal" class="small"></div>
+      <div class="stakerow">
+        <input id="st-amount" inputmode="decimal" placeholder="Amount" aria-label="PAPER to stake" autocomplete="off" />
+        <button class="link" id="st-max" type="button">Max</button>
+        <button class="action" id="st-submit" type="button" disabled>Stake</button>
+      </div>
+      <div id="st-msg" class="small" hidden></div>
+    </div>
     <div class="foot"><span id="state">connecting…</span><span id="block"></span></div>
   </div>
 </div>`;
@@ -546,7 +563,113 @@
 
   function setMsg(text, cls = '') { sk.msg = text; sk.msgClass = cls; renderSession(); }
 
+  // ---- PAPER staking: the master wallet signs each Stake (Rabby / Ledger); the session key isn't involved ----
+  const stake = { busy: false, msg: '', cls: '', intentId: null, amountRaw: null };
+  const fmtPaper = (raw) => (Number(raw) / 1e18).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  // Exact decimal string for a raw amount (for the input; no float rounding), e.g. 3492.186503347517471804.
+  const fromWad = (raw) => { const f = (raw % WAD).toString().padStart(18, '0').replace(/0+$/, ''); return `${raw / WAD}${f ? `.${f}` : ''}`; };
+  const pendingStakes = () => [...acct.ops.values()].filter((o) => o.action === 'paperStake' && o.amountRaw !== null).reduce((a, o) => a + o.amountRaw, 0n);
+  // What can still be staked: wallet PAPER minus stakes already waiting in the queue (as the web app checks).
+  const freePaper = () => { if (!acct.paper) return null; const f = acct.paper.balance - pendingStakes(); return f > 0n ? f : 0n; };
+  // Claimable USDC rewards: pendingBase + max(0, staked × accRewardPerShare / 1e27 − rewardDebt).
+  const claimable = () => {
+    if (!acct.paper || trading?.accRewardRaw == null) return null;
+    const accrued = (acct.paper.staked * trading.accRewardRaw) / 10n ** 27n - acct.paper.rewardDebt;
+    return acct.paper.pendingBase + (accrued > 0n ? accrued : 0n);
+  };
+
+  function readStake() {
+    const v = $('st-amount').value.trim().replace(/,/g, '');
+    if (v === '') return { empty: true };
+    if (!/^\d+(\.\d{1,18})?$/.test(v)) return { error: 'Amount: a number of PAPER, up to 18 decimals.' };
+    const amountRaw = BigInt(toWad(v));
+    if (amountRaw <= 0n) return { error: 'Enter more than 0 PAPER.' };
+    if (!trading || trading.error) return { error: trading?.error ?? 'Loading Papertrade’s rules…' };
+    if (trading.paused.includes('paperStake')) return { error: 'Papertrade has paused staking right now.' };
+    if (trading.minStakeRaw > 0n && amountRaw < trading.minStakeRaw) return { error: `The minimum stake is ${fmtPaper(trading.minStakeRaw)} PAPER.` };
+    const free = freePaper();
+    if (free === null) return { error: 'Waiting for your PAPER balance…' };
+    if (amountRaw > free) return { error: `You have ${fmtPaper(free)} PAPER to stake${pendingStakes() > 0n ? ' (after stakes already in the queue)' : ''}.` };
+    return { amountRaw };
+  }
+
+  function renderStake() {
+    $('stake').hidden = !sk.master;
+    if (!sk.master) return;
+    const p = acct.paper, c = claimable(), pend = pendingStakes();
+    $('st-bal').textContent = p
+      ? `wallet ${fmtPaper(p.balance)} · staked ${fmtPaper(p.staked)}${pend > 0n ? ` (+${fmtPaper(pend)} queued)` : ''}${c !== null ? ` · rewards $${(Number(c) / 1e18).toFixed(2)}` : ''}`
+      : 'loading…';
+    const r = readStake();
+    $('st-submit').disabled = stake.busy || !!r.empty || !!r.error;
+    $('st-submit').textContent = stake.busy ? 'Staking…' : 'Stake';
+    $('st-max').disabled = stake.busy || !freePaper();
+    // A problem with what's typed comes first; otherwise the last step of the stake flow.
+    const invalid = !stake.busy && r.error && !r.empty;
+    const msg = invalid ? r.error : stake.msg;
+    $('st-msg').hidden = !msg;
+    $('st-msg').textContent = msg;
+    $('st-msg').className = `small ${invalid ? 'bad' : stake.cls}`;
+  }
+  const setStakeMsg = (text, cls = '') => { stake.msg = text; stake.cls = cls; renderStake(); };
+
+  async function doStake() {
+    const r = readStake();
+    if (stake.busy || r.error || r.empty) return;
+    const amountRaw = r.amountRaw;
+    const ok = confirm(
+      `Stake ${fmtPaper(amountRaw)} PAPER?\n\n` +
+      `Your wallet (${short(sk.master)}) signs a "Stake" message on the PaperStaking contract (0xaad6…f016, HyperEVM). ` +
+      `Rabby shows the exact amount; confirm it on your Ledger.\n\n` +
+      `Staked PAPER earns a share of Papertrade's fees, paid in USDC. Unstaking is a separate action on Papertrade.`);
+    if (!ok) return;
+    stake.busy = true;
+    stake.intentId = null;
+    try {
+      setStakeMsg('Preparing…');
+      const { typedData } = await worker('stake:prepare', { amountRaw: amountRaw.toString() });
+      setStakeMsg(`Approve "Stake" for ${fmtPaper(amountRaw)} PAPER in Rabby, then confirm on your Ledger.`, 'warn');
+      const signature = await bridge('sign', { address: sk.master, typedData }, 5 * 60_000);
+      setStakeMsg('Checking the signature…');
+      const { body, intentId } = await worker('stake:finalize', { signature });
+      setStakeMsg('Sending to Papertrade…');
+      const res = await fetch(`${API}/intents`, { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json', Accept: 'application/json' }, body: JSON.stringify(body) });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json.error || json.ok === false) {
+        const code = json.code ?? json.error ?? `HTTP ${res.status}`;
+        const why = {
+          below_minimum_paper_stake: `Below Papertrade's minimum stake${json.minimumPaperStakeRaw ? ` of ${fmtPaper(BigInt(json.minimumPaperStakeRaw))} PAPER` : ''}.`,
+          intake_action_paused: 'Papertrade has paused staking right now.',
+          deadline_expired: 'The signed request expired. Try again.',
+          invalid_intent: 'Papertrade rejected the signed message as invalid.',
+          unauthorized_intent: 'Papertrade says the signature does not match this account.',
+          rate_limited: 'Papertrade is rate-limiting requests. Wait a minute and try again.',
+        }[code] ?? { paperBalance: 'Not enough PAPER in the wallet.', alreadyQueued: 'A stake is already waiting in the queue.' }[json.reason];
+        throw new Error(why ?? `Papertrade refused it: ${refusal(json, res.status)}`);
+      }
+      stake.intentId = json.intentId ?? intentId;
+      stake.amountRaw = amountRaw;
+      $('st-amount').value = '';
+      setStakeMsg(`Submitted (${json.state ?? 'queued'}). ${fmtPaper(amountRaw)} PAPER is staked once Papertrade executes it, usually within a minute.`, 'ok');
+    } catch (err) {
+      const declined = err?.code === 4001 || /reject|denied|cancel/i.test(err?.message ?? '');
+      setStakeMsg(declined ? 'You declined in the wallet. Nothing was sent.' : err.message, 'bad');
+      await worker('stake:cancel').catch(() => {});
+    } finally {
+      stake.busy = false;
+      renderStake();
+    }
+  }
+
+  function onStakeOutcome(outcome) {
+    const amt = stake.amountRaw === null ? '' : `${fmtPaper(stake.amountRaw)} `;
+    if (outcome === 'succeeded') setStakeMsg(`Staked ${amt}PAPER.`, 'ok');
+    else setStakeMsg(`The stake of ${amt}PAPER ${outcome}. Nothing was staked.`, 'bad');
+    stake.intentId = null;
+  }
+
   function renderSession() {
+    renderStake();
     const status = $('sk-status'), detail = $('sk-detail'), action = $('sk-action'), remove = $('sk-remove'), msg = $('sk-msg');
     msg.hidden = !sk.msg;
     msg.textContent = sk.msg;
@@ -707,6 +830,8 @@
         acct.available = m.funds ? Number(BigInt(m.funds.availableBalance)) / 1e18 : null;
         applyFunds(m);
         acct.realizedRaw = m.lifetime ? BigInt(m.lifetime.realizedPnlRaw) : null;
+        acct.paper = null;
+        applyPaper(m.paper);
         acct.positions = new Map();
         acct.ops = new Map((m.operations ?? []).map((t) => [t[0], opOf(t)]));
         for (const t of m.openPositions ?? []) onPosition(t);
@@ -716,6 +841,7 @@
         if (m.state?.funds) acct.available = Number(BigInt(m.state.funds.availableBalance)) / 1e18;
         if (m.state) applyFunds(m.state);
         if (m.lifetime) acct.realizedRaw = BigInt(m.lifetime.realizedPnlRaw);
+        applyPaper(m.state?.paper ?? m.paper);
         for (const id of m.removedOperationIds ?? []) acct.ops.delete(id);
         for (const t of m.addedOperations ?? []) acct.ops.set(t[0], opOf(t));
         if (m.closedPositions?.length) full.historyStale = true;
@@ -725,6 +851,7 @@
       }
       for (const [id, outcome] of m.intentOutcomes ?? []) {
         if (id === sk.local?.pending?.intentId && outcome !== 'succeeded') sk.outcome = outcome;
+        if (id === stake.intentId) onStakeOutcome(outcome);
         onOutcome(id, outcome);
       }
       revision = m.accountRevision;
@@ -739,7 +866,12 @@
 
   // ---- Orders: build a batch, submit it all at once, track it, keep it together in the queue ----
   // positions: id → { id, market, isLong, margin, leverage, entry, raw fields… }; ops: intentId → queued intent
-  const acct = { available: null, positions: new Map(), ops: new Map(), balanceRaw: 0n, queuedRaw: 0n, availRaw: 0n, availQueuedRaw: 0n, realizedRaw: null };
+  const acct = { available: null, positions: new Map(), ops: new Map(), balanceRaw: 0n, queuedRaw: 0n, availRaw: 0n, availQueuedRaw: 0n, realizedRaw: null, paper: null };
+  // PAPER: { balance, staked, pendingBase, rewardDebt }, raw 18-decimal bigints (null until the stream sends it).
+  const applyPaper = (p) => {
+    if (!p || p.balance === undefined) return;
+    acct.paper = { balance: BigInt(p.balance), staked: BigInt(p.staked ?? '0'), pendingBase: BigInt(p.pendingBase ?? '0'), rewardDebt: BigInt(p.rewardDebt ?? '0') };
+  };
   const applyFunds = (m) => {
     if (m.balance !== undefined) acct.balanceRaw = BigInt(m.balance);
     if (m.queued !== undefined) acct.queuedRaw = BigInt(m.queued);
@@ -778,12 +910,14 @@
       // `intakeControls` = [revision, minimumPaperStake, pausedActions]; older builds used `intake` with an extra slot.
       const paused = d.intakeControls?.[2] ?? d.intake?.[3];
       if (!Array.isArray(paused)) throw new Error('Papertrade changed its trading-rules format; refusing to trade until the overlay is updated.');
-      trading = { inst, tradingPaused: d.tradingPaused, paused, minMargin: Number(BigInt(d.minimumTradeSizeRaw)) / 1e18,
+      trading = { inst, tradingPaused: d.tradingPaused, paused, minStakeRaw: BigInt(d.intakeControls?.[1] ?? d.intake?.[1] ?? '0'),
+        accRewardRaw: d.accRewardPerShareRaw === undefined ? null : BigInt(d.accRewardPerShareRaw), minMargin: Number(BigInt(d.minimumTradeSizeRaw)) / 1e18,
         minNotional: Number(BigInt(d.minimumOpenNotionalRaw)) / 1e18, maxLev: d.maximumLeverage ?? 0, minLev: d.minimumLeverage ?? 0, error: null, at: Date.now() };
     } catch (err) {
       trading = { error: err.message };
     }
     renderOrder();
+    renderStake();
   }
 
   async function loadMids() {
@@ -1312,6 +1446,10 @@
     renderOrder();
   });
   $('o-submit').addEventListener('click', submitBatch);
+  $('st-amount').addEventListener('input', () => { if (stake.cls === 'bad') stake.msg = ''; renderStake(); });
+  for (const ev of ['keydown', 'keyup', 'keypress']) $('st-amount').addEventListener(ev, (e) => { e.stopPropagation(); if (ev === 'keydown' && e.key === 'Enter') doStake(); });
+  $('st-max').addEventListener('click', () => { const f = freePaper(); if (f) { $('st-amount').value = fromWad(f); renderStake(); } });
+  $('st-submit').addEventListener('click', doStake);
   $('o-batches').addEventListener('click', (e) => {
     const b = e.target.closest('[data-cancel-batch]');
     if (b) withdrawBatch(Number(b.dataset.cancelBatch), 'cancelled while waiting');
@@ -1552,7 +1690,8 @@
       ? `<thead><tr><th>Rank</th><th>Action</th><th>Detail</th><th>Size</th><th>Waiting</th></tr></thead><tbody>${ops.map((o) => {
           const inst = instById(o.instrumentId);
           const what = o.action === 'openPosition' ? `<span class="tag ${o.isLong ? 'LONG' : 'SHORT'}">${o.isLong ? 'LONG' : 'SHORT'}</span> ${inst?.symbol ?? ''} ${o.leverage}×`
-            : o.action === 'closePositions' ? `close ${(o.positionIds ?? []).map((x) => `#${x}`).join(', ')}` : o.action;
+            : o.action === 'closePositions' ? `close ${(o.positionIds ?? []).map((x) => `#${x}`).join(', ')}`
+            : o.action === 'paperStake' && o.amountRaw !== null ? `stake ${fmtPaper(o.amountRaw)} PAPER` : o.action;
           const size = o.action === 'openPosition' && o.amountRaw !== null ? usd(wadNum(o.amountRaw) * o.leverage) : '';
           return `<tr><td>${full.ranks[o.intentId] ? `#${full.ranks[o.intentId]}` : '–'}</td><td>${o.action}</td><td>${what}</td><td>${size}</td><td>${fmtDur(Date.now() - o.acceptedAtMs)}</td></tr>`;
         }).join('')}</tbody>`
