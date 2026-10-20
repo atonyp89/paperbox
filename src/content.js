@@ -121,7 +121,7 @@
 
   // ---- UI ----
   // Full-screen dashboard state (see "Full-screen mode" below); declared first because layout code reads it.
-  const full = { on: false, marks: {}, winFeeRaw: null, history: [], histFor: null, cursor: null, historyStale: true, historyLoading: false, ranks: {}, tab: 'positions', page: 0 };
+  const full = { on: false, marks: {}, markAt: {}, winFeeRaw: null, history: [], histFor: null, cursor: null, historyStale: true, historyLoading: false, ranks: {}, tab: 'positions', page: 0 };
   const HIST_PAGE = 25;
   try { if (sessionStorage.getItem('pt-full-tab') === 'history') full.tab = 'history'; } catch { /* storage blocked: default tab */ }
   const host = document.createElement('div');
@@ -280,7 +280,7 @@
   .ftable tfoot td:first-child { color: var(--o-muted); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .04em; }
   .ftable tfoot td.fnote { text-align: left; font-weight: 400; color: var(--o-muted); }
   .fbody { display: grid; grid-template-columns: minmax(0, 1fr) 340px; min-height: 0; }
-  @media (max-width: 1300px) { .fbody { grid-template-columns: minmax(0, 1fr) 304px; } .fmain { padding: 16px 14px 40px; } .fmain .ftable th, .fmain .ftable td { padding: 7px 6px; } }
+  @media (max-width: 1340px) { .fbody { grid-template-columns: minmax(0, 1fr) 304px; } .fmain { padding: 16px 14px 40px; } .fmain .ftable th, .fmain .ftable td { padding: 7px 6px; } }
   .fmain { overflow: auto; padding: 16px 20px 40px; display: grid; grid-auto-rows: max-content; gap: 16px; align-content: start; min-width: 0; }
   .faside { border-left: 1px solid var(--o-border); overflow: auto; min-height: 0; }
   .faside .panel { width: 100%; max-width: none; max-height: none; border: 0; border-radius: 0; box-shadow: none; backdrop-filter: none; background: var(--o-panel); }
@@ -302,6 +302,14 @@
   .riskbar { display: inline-block; width: 40px; height: 5px; border-radius: 3px; background: var(--o-border); vertical-align: middle; margin-right: 6px; overflow: hidden; }
   .riskbar > i { display: block; height: 100%; }
   .fempty { padding: 18px 14px; color: var(--o-faint); }
+  .frollbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 14px; border-bottom: 1px solid var(--o-border); font-size: 11px; color: var(--o-muted); }
+  .frollbar label { display: inline-flex; align-items: center; gap: 4px; }
+  .frollbar input { all: unset; box-sizing: border-box; width: 52px; background: var(--o-raised); border: 1px solid var(--o-border); border-radius: 4px; padding: 2px 6px;
+    font: 600 12px var(--o-font); font-variant-numeric: tabular-nums; color: var(--o-ink); text-align: right; }
+  .frollbar input:focus { border-color: var(--o-chart); }
+  .frollbar input.bad { border-color: var(--o-neg); }
+  .ftable td .rollst { white-space: nowrap; }
+  .ftable .facts { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
   .ftabbar { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px 0 5px; background: var(--o-sunken); border-bottom: 1px solid var(--o-border); }
   .tabstrip { display: flex; align-self: stretch; }
   .ftab { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; padding: 0 11px; font-size: 11px; font-weight: 600; color: var(--o-muted); border-bottom: 2px solid transparent; }
@@ -316,8 +324,8 @@
   .fsubh { display: flex; align-items: baseline; gap: 10px; padding: 12px 14px 6px; border-top: 1px solid var(--o-border); }
   .fsubh h4 { margin: 0; font-size: 11px; font-weight: 600; color: var(--o-muted); }
   .fpager { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--o-border); }
-  /* Narrow windows (below ~1160px): one column, the order builder under the tables; the whole dashboard scrolls. */
-  @media (max-width: 1160px) {
+  /* Narrow windows (below ~1190px): one column, the order builder under the tables; the whole dashboard scrolls. */
+  @media (max-width: 1190px) {
     .full { overflow: auto; grid-template-rows: auto auto auto auto auto; }
     .fbody { grid-template-columns: minmax(0, 1fr); }
     .fmain { overflow: visible; }
@@ -374,6 +382,13 @@
           <button class="fbtn" id="f-close-all" type="button" title="Stage a close of every open position in the order builder">Close All</button>
         </div>
         <div id="f-tab-positions">
+          <div class="frollbar" id="f-rollbar">
+            <span class="lbl" title="Checks applied to every roll's batch. Each roll's trigger (a loss in dollars) is set when you press Roll on a row.">Roll checks</span>
+            <label>queue distance <input id="r-distance" inputmode="numeric" placeholder="off" value="5" /></label>
+            <label>pending tx below <input id="r-pending" inputmode="numeric" placeholder="off" value="20" /></label>
+            <label>OI room above <input id="r-oi" inputmode="decimal" placeholder="off" value="2" /> M USD</label>
+            <span class="small" id="r-note"></span>
+          </div>
           <div class="fscroll"><table class="ftable" id="f-pos"></table></div>
           <div class="fsubh"><h4>Pending queue</h4><span class="small" id="f-pend-note"></span></div>
           <div class="fscroll"><table class="ftable" id="f-pend"></table></div>
@@ -1236,13 +1251,13 @@
       const why = holdReason(b) ?? 'sending…';
       const waited = Math.round((Date.now() - b.at) / 1000);
       const rows = b.orders.map((r) => `<div><span>${describe(r)}</span><span>waiting</span></div>`).join('');
-      return `<div class="batch"><div class="bhead"><span>Batch ${time}</span><span class="warn">waiting: ${why} · ${waited < 120 ? `${waited}s` : `${Math.round(waited / 60)}m`} <button class="link" data-cancel-batch="${b.id}">cancel</button></span></div>${rows}</div>`;
+      return `<div class="batch"><div class="bhead"><span>Batch ${time}${b.label ? ` · ${b.label}` : ''}</span><span class="warn">waiting: ${why} · ${waited < 120 ? `${waited}s` : `${Math.round(waited / 60)}m`} <button class="link" data-cancel-batch="${b.id}">cancel</button></span></div>${rows}</div>`;
     }
     if (b.state === 'failed') {
-      return `<div class="batch"><div class="bhead"><span>Batch ${time}</span><span class="bad">not sent: ${b.note}</span></div>${b.orders.map((r) => `<div><span>${describe(r)}</span><span>not sent</span></div>`).join('')}</div>`;
+      return `<div class="batch"><div class="bhead"><span>Batch ${time}${b.label ? ` · ${b.label}` : ''}</span><span class="bad">not sent: ${b.note}</span></div>${b.orders.map((r) => `<div><span>${describe(r)}</span><span>not sent</span></div>`).join('')}</div>`;
     }
     if (b.state === 'withdrawn') {
-      return `<div class="batch"><div class="bhead"><span>Batch ${time}</span><span>${b.note}</span></div>${b.orders.map((r) => `<div><span>${describe(r)}</span><span>not sent</span></div>`).join('')}</div>`;
+      return `<div class="batch"><div class="bhead"><span>Batch ${time}${b.label ? ` · ${b.label}` : ''}</span><span>${b.note}</span></div>${b.orders.map((r) => `<div><span>${describe(r)}</span><span>not sent</span></div>`).join('')}</div>`;
     }
     const guard = b.distance === null ? `<span>${b.orders.length < 2 ? 'single order' : 'no queue guard'}</span>`
       : g.state === 'tripped' ? `<span class="bad">guard tripped: ${g.note}</span>`
@@ -1261,7 +1276,7 @@
         : `<span class="bad">${r.state}${r.detail ? `: ${r.detail}` : ''}</span>`;
       return `<div><span>${describe(r)}</span>${state}</div>`;
     }).join('');
-    return `<div class="batch"><div class="bhead"><span>Batch ${time}</span>${guard}</div>${rows}${renderExec(b)}</div>`;
+    return `<div class="batch"><div class="bhead"><span>Batch ${time}${b.label ? ` · ${b.label}` : ''}</span>${guard}</div>${rows}${renderExec(b)}</div>`;
   }
 
   const REFUSAL = {
@@ -1338,8 +1353,28 @@
   // (never on stale data: holdReason treats an old snapshot or old market rules as "unknown").
   function checkWaiting() {
     for (const b of [...batches].reverse()) { // oldest first
-      if (b.state === 'waiting' && !submitting && holdReason(b) === null) sendBatch(b);
+      if (b.state !== 'waiting') continue;
+      const stale = b.precheck?.(); // e.g. a Roll whose position recovered while it waited
+      if (stale) { withdrawBatch(b.id, stale); continue; }
+      if (!submitting && holdReason(b) === null) sendBatch(b);
     }
+  }
+
+  // Start a batch from code (Roll): the same guards, gates and tracking as one submitted by hand, without the
+  // dialog. It waits like any batch until every check passes; `precheck()` returning a reason withdraws it.
+  function launchBatch(orders, { distance, maxPending, oiBuffer, label, precheck }) {
+    const batch = {
+      id: ++batchSeq, at: Date.now(), distance: orders.length >= 2 ? distance : null, maxPending, oiBuffer, label, precheck,
+      state: 'waiting', note: '',
+      orders: orders.map((x) => ({ ...x, state: 'waiting', detail: '', rank: null, leftQueue: false, sentAt: Date.now() })),
+      guard: { state: 'watching', spread: null, note: '' },
+    };
+    batches.unshift(batch);
+    // Like a manual Submit: decide on fresh OI caps rather than waiting for the next poll.
+    if (oiBuffer !== null && oiSides(batch.orders).length) loadTrading().then(checkWaiting);
+    else checkWaiting();
+    renderOrder();
+    return batch;
   }
 
   function withdrawBatch(id, note) {
@@ -1426,6 +1461,7 @@
     if (r && r.state !== 'filled') {
       r.state = 'filled'; r.detail = `@ ${px(pos.entry, inst)}`; r.rank = null;
       r.fill = { raw: pos.entryRaw, scale: inst ? inst.priceScaleRaw : null, market: pos.market };
+      r.newPositionId = pos.id; // Roll follows the replacement position
     }
   }
 
@@ -1730,7 +1766,10 @@
         if (m.channel !== 'bbo') return;
         const inst = trading?.inst?.[m.data?.coin];
         const [bid, ask] = m.data?.bbo ?? [];
-        if (inst && bid && ask) full.marks[inst.symbol] = (toRawPx(bid.px, inst.priceScaleRaw) + toRawPx(ask.px, inst.priceScaleRaw)) / 2n;
+        if (inst && bid && ask) {
+          full.marks[inst.symbol] = (toRawPx(bid.px, inst.priceScaleRaw) + toRawPx(ask.px, inst.priceScaleRaw)) / 2n;
+          full.markAt[inst.symbol] = Date.now();
+        }
       };
       ws.onclose = () => { clearTimeout(retry); retry = setTimeout(connect, 2000); };
     };
@@ -1828,7 +1867,7 @@
         <td>${scale ? shares(p.margin * p.leverage, Number(p.entryRaw) / scale) : '–'}</td>
         <td title="${usd(p.margin)} margin × ${p.leverage}">${usd(p.margin * p.leverage)}</td>
         <td>${price(p.entryRaw)}</td>${markCell}${pnlCell}${costCell}${riskCell}
-        <td>${staged_ ? '<span class="small">staged</span>' : `<button class="link" data-stage-close="${p.id}">Close</button>`}</td></tr>`;
+        <td>${rollCell(p, staged_)}</td></tr>`;
     });
     $('f-pos').innerHTML = rows.length
       ? `<thead><tr><th>Position<span class="sub">open for</span></th><th>Market</th><th>Leverage</th><th>Size</th><th>Notional</th><th>Entry</th><th>Mark<span class="sub">move</span></th><th>PnL<span class="sub">if closed now</span></th><th>Close cost<span class="sub">of the gain</span></th><th>Bust<span class="sub">risk</span></th><th></th></tr></thead><tbody>${rows.join('')}</tbody>`
@@ -1973,6 +2012,170 @@
     $('hs-net-sub').title = `BTC long ${exact(bl)} · short ${exact(bs)}\nETH long ${exact(el)} · short ${exact(es)}\nThe house carries the opposite exposure.`;
   }
 
+  // ---- Roll (full screen): when a losing position's PnL if closed now falls to the threshold, close it and
+  // open the same position again (same market, side, margin, leverage) as one 2-order batch, so the loss is
+  // realized (and mints PAPER) and the PnL starts again from zero. It never acts on a position in profit, and it
+  // keeps following the replacement until stopped. Runs only while this full-screen tab is open. ----
+  const rolls = new Map(); // positionId → { threshold, distance, maxPending, oiBuffer, state, below, batchId, count, retryAt, stopping, note }
+  let rollNote = '';
+  const ROLL_HOLD_MS = 2000, ROLL_RETRY_MS = 30_000, MARK_FRESH_MS = 5000;
+  // Each roll's trigger: a loss in dollars, typed when it's armed. As raw USDC (negative):
+  const rollLimit = (r) => -BigInt(Math.round(r.threshold * 1e6)) * 10n ** 12n;
+  const thrLabel = (r) => `−$${r.threshold}`;
+  // Ask for a roll's dollar amount; returns a number, or null if cancelled / invalid (with a message).
+  function askThreshold(text, current) {
+    const v = prompt(text, current ?? settings.roll?.lastThreshold ?? '50');
+    if (v === null) return null;
+    const t = v.trim().replace(/^[-−$\s]+/, '');
+    if (!/^\d+(\.\d{1,2})?$/.test(t) || Number(t) <= 0) { flashError('Roll trigger: a dollar amount greater than 0, e.g. 50.'); return null; }
+    settings.roll = { ...(settings.roll ?? {}), lastThreshold: t };
+    storage.set(settings);
+    return Number(t);
+  }
+  // Exact decimal string for a raw 18-decimal amount (round-trips through toWad).
+  const wadStr = (raw) => { const f = (raw % WAD).toString().padStart(18, '0').replace(/0+$/, ''); return `${raw / WAD}${f ? `.${f}` : ''}`; };
+
+  function readRollSettings() {
+    const num = (id, { int = false, blank = false, min = 0 } = {}) => {
+      const el = $(id), v = el.value.trim();
+      const ok = (blank && v === '') || (int ? /^\d+$/ : /^\d+(\.\d+)?$/).test(v) && Number(v) >= min;
+      el.classList.toggle('bad', !ok);
+      return ok ? (v === '' ? null : Number(v)) : undefined;
+    };
+    const distance = num('r-distance', { int: true, blank: true });
+    const maxPending = num('r-pending', { int: true, blank: true, min: 1 }), oiM = num('r-oi', { blank: true });
+    if ([distance, maxPending, oiM].includes(undefined)) return { error: 'Fix the highlighted Roll check.' };
+    return { distance, maxPending, oiBuffer: oiM === null ? null : oiM * 1e6 };
+  }
+  // The bar is the one control for every roll: a valid edit applies to all armed rolls at once (a batch already
+  // sent keeps the checks it was sent with).
+  function applyRollSettings() {
+    const cfg = readRollSettings();
+    if (cfg.error) return;
+    for (const r of rolls.values()) Object.assign(r, { distance: cfg.distance, maxPending: cfg.maxPending, oiBuffer: cfg.oiBuffer });
+    saveRollSettings();
+    renderFull();
+  }
+  function saveRollSettings() {
+    settings.roll = { ...(settings.roll ?? {}), distance: $('r-distance').value, pending: $('r-pending').value, oi: $('r-oi').value };
+    storage.set(settings);
+  }
+
+  // PnL if closed now (raw USDC), or null without a fresh mark.
+  function rollPnl(p) {
+    const inst = instById(p.instrumentId), mark = inst && markOf(inst);
+    if (!inst || !mark || Date.now() - (full.markAt[inst.symbol] ?? 0) > MARK_FRESH_MS) return null;
+    return payout(adjustedPnl(p, inst, mark));
+  }
+  const keyActive = () => !$('order').hidden; // the order builder shows only with a registered, unexpired key
+
+  function rollCell(p, staged_) {
+    const r = rolls.get(p.id);
+    const close = staged_ ? '<span class="small">staged</span>' : `<button class="link" data-stage-close="${p.id}">Close</button>`;
+    if (!r) return keyActive() ? `<span class="facts">${close}<button class="link" data-roll="${p.id}" title="Roll this position when its PnL falls to the threshold">Roll</button></span>` : close;
+    const label = r.state === 'firing' ? 'rolling…' : r.stopping ? 'stopping…' : `at ${thrLabel(r)}${r.count ? ` · ${r.count}×` : ''}`;
+    return `<span class="facts"><button class="link small warn rollst" data-roll-edit="${p.id}" title="${(r.note || 'Armed').replace(/"/g, '&quot;')} · click to change the amount">${label}</button><button class="link" data-unroll="${p.id}">stop roll</button></span>`;
+  }
+
+  function armRoll(id) {
+    const p = acct.positions.get(id), inst = p && instById(p.instrumentId);
+    if (!p || !inst) return;
+    const cfg = readRollSettings();
+    if (cfg.error) return flashError(cfg.error);
+    const exp = sk.local && sk.onchain[sk.local.address];
+    if (cfg.distance !== null && exp && Number(exp) * 1000 < Date.now() + 2 * 3600_000) return flashError('The session key expires within 2 hours, so the queue guard might not be able to cancel. Replace the key first.');
+    const terms = `${inst.symbol} ${p.isLong ? 'LONG' : 'SHORT'} ${usd(p.margin)} × ${p.leverage}`;
+    const threshold = askThreshold(
+      `Roll position #${id} (${terms}, ${usd(p.margin * p.leverage)}).\n\n` +
+      `When its PnL if closed now falls to the loss you enter below (held for 2 seconds, on fresh prices), this tab sends a batch of 2 orders, signed by the session key with no further prompt:\n` +
+      `  1. close #${id}\n  2. open ${terms} again (same market, side, margin and leverage)\n\n` +
+      `Batch checks: ${cfg.distance === null ? 'no queue guard' : `queue distance ${cfg.distance}`} · ${cfg.maxPending === null ? 'no pending tx gate' : `pending tx below ${cfg.maxPending}`} · ${cfg.oiBuffer === null ? 'no OI check' : `OI room above ${fmtM(cfg.oiBuffer)}`}.\n\n` +
+      `It never acts while the position is in profit, and it repeats on each new position until you press stop. ` +
+      `Both orders go out together, so you need ${usd(p.margin)} available for the new position before the old one's margin comes back. ` +
+      `Each roll realizes the loss (which mints PAPER) and opens again at the price of the moment. Keep this tab open: closing or reloading it stops every roll.\n\n` +
+      `Roll when the loss reaches, in dollars (OK starts it):`);
+    if (threshold === null) return;
+    rolls.set(id, { ...cfg, threshold, state: 'armed', below: null, batchId: null, count: 0, retryAt: 0, stopping: false, note: 'Armed' });
+    renderFull();
+  }
+
+  function editRoll(id) {
+    const r = rolls.get(id);
+    if (!r) return;
+    const t = askThreshold(`Change the roll trigger for #${id} (now −$${r.threshold}).\n\nRoll when the loss reaches, in dollars:`, String(r.threshold));
+    if (t === null) return;
+    r.threshold = t; r.below = null; r.note = `Trigger changed to −$${t}`;
+    renderFull();
+  }
+
+  function stopRoll(id) {
+    const r = rolls.get(id);
+    if (!r) return;
+    const b = r.batchId && batches.find((x) => x.id === r.batchId);
+    if (b?.state === 'waiting') withdrawBatch(b.id, 'roll stopped');
+    if (b && b.state !== 'waiting' && b.state !== 'withdrawn' && b.state !== 'failed' && b.orders.some((o) => !['filled', ...BAD].includes(o.state))) r.stopping = true; // in flight: let it finish, don't re-arm
+    else rolls.delete(id);
+    renderFull();
+  }
+
+  function fireRoll(id, r, p) {
+    const inst = instById(p.instrumentId);
+    const fail = (why) => { r.retryAt = Date.now() + ROLL_RETRY_MS; r.below = null; r.note = why; rollNote = `#${id}: ${why}`; };
+    if (!keyActive()) return fail('no active session key');
+    if (acct.available !== null && p.margin > acct.available + 1e-9) return fail(`needs ${usd(p.margin)} available to reopen (you have ${usd(acct.available)})`);
+    const maxLev = trading?.maxLev > 0 ? Math.min(inst.maxLeverage, trading.maxLev) : inst.maxLeverage;
+    if (!trading || trading.error || p.leverage > maxLev || p.margin < trading.minMargin || p.margin * p.leverage < trading.minNotional || p.margin * p.leverage > inst.maxNotional) {
+      rolls.delete(id); rollNote = `#${id}: stopped; the same position can't be opened under the current market rules`; return;
+    }
+    const open = { kind: 'open', market: inst.symbol, isLong: p.isLong, marginStr: wadStr(p.marginRaw), margin: p.margin, leverage: p.leverage, notional: p.margin * p.leverage, instrumentId: p.instrumentId };
+    const b = launchBatch([{ kind: 'close', positionId: id, snapshot: p }, open], {
+      distance: r.distance, maxPending: r.maxPending, oiBuffer: r.oiBuffer, label: `Roll #${id}`,
+      precheck: () => {
+        const cur = acct.positions.get(id), pnl = cur && rollPnl(cur);
+        if (!cur) return 'position already closed';
+        if (pnl !== null && pnl > rollLimit(r)) return 'PnL recovered above the roll threshold';
+        return null;
+      },
+    });
+    r.batchId = b.id; r.state = 'firing'; r.note = `Roll batch sent at ${new Date().toLocaleTimeString()}`;
+  }
+
+  function tickRolls() {
+    const now = Date.now();
+    for (const [id, r] of [...rolls]) {
+      const p = acct.positions.get(id);
+      const b = r.batchId ? batches.find((x) => x.id === r.batchId) : null;
+      if (b) {
+        const [c, o] = b.orders, done = (x) => x.state === 'filled', bad = (x) => BAD.has(x.state);
+        if (b.state === 'withdrawn' || b.state === 'failed') {
+          r.batchId = null; r.state = 'armed'; r.below = null; r.retryAt = now + ROLL_RETRY_MS; r.note = `Not rolled: ${b.note}`;
+          if (r.stopping || !p) rolls.delete(id);
+        } else if (done(c) && done(o) && o.newPositionId) {
+          rolls.delete(id);
+          rollNote = `rolled #${id} → #${o.newPositionId} at ${new Date().toLocaleTimeString()}`;
+          if (!r.stopping) rolls.set(o.newPositionId, { ...r, state: 'armed', below: null, batchId: null, count: r.count + 1, retryAt: 0, note: rollNote });
+        } else if (done(c) && bad(o)) {
+          rolls.delete(id); rollNote = `#${id} was closed, but the new position wasn't opened (${o.state}${o.detail ? `: ${o.detail}` : ''}); roll stopped`;
+        } else if (bad(c) && done(o)) {
+          rolls.delete(id); rollNote = `#${id}: the close didn't go through (${c.state}) but the new position opened as #${o.newPositionId ?? '?'}, so you now hold both; roll stopped`;
+        } else if (bad(c) && bad(o)) {
+          r.batchId = null; r.state = 'armed'; r.below = null; r.retryAt = now + ROLL_RETRY_MS; r.note = `Not rolled: close ${c.state}, open ${o.state}`;
+          if (r.stopping || !p) rolls.delete(id);
+        }
+        continue;
+      }
+      if (!p) { rolls.delete(id); rollNote = `#${id} closed; roll stopped`; continue; }
+      if (r.state !== 'armed' || now < r.retryAt) continue;
+      const pnl = rollPnl(p);
+      const limit = rollLimit(r);
+      if (pnl === null || pnl >= 0n || pnl > limit) { r.below = null; continue; } // never on a position in profit
+      if (r.below === null) { r.below = now; continue; }
+      if (now - r.below >= ROLL_HOLD_MS) fireRoll(id, r, p);
+    }
+    const n = rolls.size;
+    $('r-note').textContent = [n ? `${n} rolling` : keyActive() ? '' : 'needs an active session key', rollNote].filter(Boolean).join(' · ');
+  }
+
   async function enterFull() {
     full.on = true;
     host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;';
@@ -1986,6 +2189,9 @@
     loadHouse(); // the House fund strip
     setInterval(loadHouse, 5_000);
     setInterval(renderHouse, 1_000); // keeps "live / stale" honest between polls
+    const rs = settings.roll;
+    if (rs) { $('r-distance').value = rs.distance ?? '5'; $('r-pending').value = rs.pending ?? '20'; $('r-oi').value = rs.oi ?? '2'; }
+    setInterval(tickRolls, 1_000);
     document.documentElement.style.overflow = 'hidden'; // the dashboard covers the page; don't scroll it underneath
     watchBbo();
     loadWinFee();
@@ -2023,7 +2229,15 @@
     renderOrder();
     renderFull();
   });
+  for (const id of ['r-distance', 'r-pending', 'r-oi']) {
+    $(id).addEventListener('input', applyRollSettings);
+    for (const ev of ['keydown', 'keyup', 'keypress']) $(id).addEventListener(ev, (e) => e.stopPropagation());
+  }
   $('f-pos').addEventListener('click', (e) => {
+    const roll = e.target.closest('[data-roll]'), unroll = e.target.closest('[data-unroll]'), edit = e.target.closest('[data-roll-edit]');
+    if (roll) return armRoll(roll.dataset.roll);
+    if (edit) return editRoll(edit.dataset.rollEdit);
+    if (unroll) return stopRoll(unroll.dataset.unroll);
     const b = e.target.closest('[data-stage-close]');
     if (!b) return;
     if (!staged.some((x) => x.kind === 'close' && x.positionId === b.dataset.stageClose)) {

@@ -190,6 +190,51 @@ Example, distance 10, a long and a short:
   between yours. Pick a distance with some room for that, and watch congestion.
 - **Cancelling a queued order is free**, and so is an order that expires unfilled.
 
+## Roll (full screen)
+
+**Roll** is an automatic loss reset for a single position. When a position's **PnL if closed now** falls to your
+threshold, Roll closes it and opens the same position again (same market, side, margin and leverage). That realizes
+the loss, which mints PAPER for it, and the new position starts again from a PnL of zero. Then it keeps watching the
+new position.
+
+**The trigger is per position:** a loss in dollars, typed when you press **Roll** on that row (e.g. `50` means roll
+when its PnL if closed now reaches −$50). The box is pre-filled with your last amount. It never acts on a position in
+profit.
+
+**Roll checks** (the bar above the positions table, remembered, shared by every roll): **queue distance**,
+**pending tx below** and **OI room above** (millions of USD), the same checks as batch orders, applied to each roll's
+batch. Leave one blank to turn it off. Editing them updates every armed roll; a batch already sent keeps its checks.
+
+**Using it:**
+- Each row in the table has **Close** and **Roll**. Roll only shows while the session key is active.
+- **Roll** explains what it will do and asks for the dollar amount. OK starts it. After that, every roll is signed
+  by the session key with no further prompt.
+- An armed row shows **at −$50** (with the number of rolls so far, e.g. `· 2×`) and **stop roll**. Click
+  **at −$50** to change that position's amount. The amount carries over to the replacement position.
+
+**What happens when it triggers:**
+1. The PnL has to stay at or below the threshold for **2 seconds**, on Hyperliquid prices no more than 5 seconds old.
+2. It sends a **2-order batch**, labelled `Roll #id` in the batch list: close the position, and open the same one.
+   The queue-distance guard, pending-tx gate and OI check work exactly as for batches you submit yourself.
+3. While the batch waits on a gate, it's re-checked. If the PnL recovers above the threshold, or the position
+   closes, the batch is withdrawn and nothing is sent.
+4. When both orders fill, the roll moves to the new position and keeps watching it.
+
+**When it doesn't go to plan:**
+- **The close fills but the reopen fails:** the roll stops (you're left with no position).
+- **The reopen fills but the close doesn't** (for example, it was refused after the reopen had already
+  executed): the roll stops and says so, because you now hold both positions.
+- **Both fail, or the batch isn't sent:** the roll stays armed and tries again 30 seconds later.
+- **The position closes some other way** (by hand, or liquidated): the roll stops.
+
+**Limits:**
+- **You need the new position's margin available** when it triggers. Both orders go out at once, so the old
+  position's margin hasn't come back yet. If it isn't there, the roll waits and says how much it needs.
+- **Each roll reopens at the price of the moment.** The new position's PnL starts with the usual small entry cost.
+  A later recovery is a fresh win on the new position, so it pays the normal 2% win fee and haircut.
+- **It only runs while this full-screen tab is open.** Closing or reloading the tab stops every roll; nothing runs
+  in the background.
+
 ## PAPER staking
 
 PAPER staking lives in **full screen**, as a strip of cells between the top bar and the equity cards. It isn't
@@ -260,7 +305,8 @@ What it shows:
   (long − short, margin × leverage) under the Size and Notional columns, tagged NET LONG / NET SHORT, with the
   long and short totals beside them (e.g. `BTC NET LONG +1.3638 +$100,000 · long $400,000 · short $300,000`).
 
-  Each row has a **Close** button that adds the close to the batch in the right-hand column. **Close All**
+  Each row has a **Close** button that adds the close to the batch in the right-hand column, and a **Roll**
+  button (see [Roll](#roll-full-screen)). **Close All**
   (in the tab bar) adds every open position's close; nothing is sent until you submit the batch.
 - **Positions tab: pending queue** (under the positions): every queued intent on your account (opens, closes and others) with its place in line
   and how long it's waited.
