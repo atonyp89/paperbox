@@ -204,23 +204,17 @@
   .field input { all: unset; box-sizing: border-box; width: 100%; min-width: 0; background: var(--o-raised); border: 1px solid var(--o-border); border-radius: 4px;
     padding: 5px 8px; font: 600 13px var(--o-font); font-variant-numeric: tabular-nums; color: var(--o-ink); }
   .field input:focus { border-color: var(--o-chart); }
-  /* The PAPER widget floats on its own (position saved separately); in full screen it docks under the panel. */
-  .pwidget { position: fixed; z-index: 1; }
   .ptoken { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; flex: none;
     background: var(--o-ink); color: var(--o-panel); font-size: 10px; font-weight: 800; }
-  .pwsec { padding: 8px 12px 10px; border-top: 1px solid var(--o-border); display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; }
-  .pwsec .val { display: block; font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .pwsec .action:disabled { opacity: .45; cursor: default; }
-  .pwidget.docked { position: static; }
-  .pwidget.docked #pw-pill, .pwidget.docked #pw-collapse { display: none !important; }
-  .pwidget.docked .panel { border-top: 1px solid var(--o-border); }
-  .pwidget.docked .head { cursor: default; position: static; }
-  .faside .pwidget .head { display: flex; } /* the sidebar hides the main panel's header, but this one titles the section */
-  .pwidget .cell .small { display: block; }
+  /* PAPER staking: a strip of cells above the summary cards, full screen only. */
+  .fpaper { display: flex; flex-wrap: wrap; gap: 1px; background: var(--o-border); border-bottom: 1px solid var(--o-border); }
+  .fpcell { background: var(--o-panel); padding: 10px 20px; flex: 1 1 150px; min-width: 0; display: grid; align-content: start; gap: 3px; }
+  .fpcell .val { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .fpcell .small { display: block; }
+  .fpwide { flex: 2 1 320px; }
+  .fpmid { flex: 1.5 1 240px; }
+  .fptitle { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; font-weight: 700; }
   .stakerow { display: flex; align-items: center; gap: 8px; min-width: 0; }
-  .stakerow input { all: unset; box-sizing: border-box; flex: 1 1 0; width: 0; min-width: 0; background: var(--o-raised); border: 1px solid var(--o-border); border-radius: 4px;
-    padding: 5px 8px; font: 600 13px var(--o-font); font-variant-numeric: tabular-nums; color: var(--o-ink); }
-  .stakerow input:focus { border-color: var(--o-chart); }
   .stakerow .action:disabled { opacity: .45; cursor: default; }
   .sides { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
   .side { all: unset; text-align: center; cursor: pointer; padding: 7px 0; border-radius: 4px; font-weight: 700; font-size: 13px; color: var(--o-raised); }
@@ -257,7 +251,7 @@
   .batch > .bexec.good b { color: var(--o-pos); } .batch > .bexec.bad b { color: var(--o-neg); }
 
   /* ---- Full-screen dashboard (a Papertrade tab opened with ⤢) ---- */
-  .full { position: fixed; inset: 0; background: var(--o-page); color: var(--o-ink); display: grid; grid-template-rows: auto auto minmax(0, 1fr); overflow: hidden;
+  .full { position: fixed; inset: 0; background: var(--o-page); color: var(--o-ink); display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); overflow: hidden;
     font: 13px/1.45 var(--o-font); }
   .ftop { display: flex; align-items: center; gap: 16px; padding: 10px 20px; border-bottom: 1px solid var(--o-border); flex-wrap: wrap; }
   .ftitle { font-weight: 700; font-size: 15px; }
@@ -320,7 +314,7 @@
   .fpager { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--o-border); }
   /* Narrow windows (below ~1160px): one column, the order builder under the tables; the whole dashboard scrolls. */
   @media (max-width: 1160px) {
-    .full { overflow: auto; grid-template-rows: auto auto auto; }
+    .full { overflow: auto; grid-template-rows: auto auto auto auto; }
     .fbody { grid-template-columns: minmax(0, 1fr); }
     .fmain { overflow: visible; }
     .faside { border-left: 0; border-top: 1px solid var(--o-border); overflow: visible; }
@@ -335,6 +329,26 @@
     <div class="fsession" id="f-session-slot"></div>
     <button class="link" id="f-exit" type="button">Back to overlay</button>
   </header>
+  <section class="fpaper" id="pw" aria-label="PAPER staking">
+    <div class="fpcell fptitle"><span class="ptoken">P</span><span>PAPER staking</span></div>
+    <div class="fpcell"><span class="lbl">Total supply</span><span class="val" id="pw-supply">--</span></div>
+    <div class="fpcell"><span class="lbl">Total staked</span><span class="val" id="pw-total">--</span><span class="small" id="pw-total-pct"></span></div>
+    <div class="fpcell fpwide" id="pw-connect" hidden>
+      <span class="small">Connect your wallet to stake PAPER and claim rewards.</span>
+      <div class="stakerow"><button class="action" id="pw-connect-btn" type="button">Connect wallet</button></div>
+    </div>
+    <div class="fpcell fpmid pw-acct">
+      <span class="lbl">In your wallet</span>
+      <div class="stakerow"><span class="val" id="pw-wallet">--</span><button class="action" id="st-submit" type="button" disabled title="Stake all the PAPER in your wallet">Stake all</button></div>
+      <div id="st-msg" class="small" hidden></div>
+    </div>
+    <div class="fpcell pw-acct"><span class="lbl">Your stake</span><span class="val" id="pw-staked">--</span><span class="small" id="pw-share"></span></div>
+    <div class="fpcell fpmid pw-acct">
+      <span class="lbl">Rewards (USDC)</span>
+      <div class="stakerow"><span class="val" id="pw-rewards">--</span><button class="action" id="cl-submit" type="button" disabled>Claim</button></div>
+      <div id="cl-msg" class="small" hidden></div>
+    </div>
+  </section>
   <dl class="fcards" id="f-cards"></dl>
   <div class="fbody">
     <main class="fmain">
@@ -428,53 +442,10 @@
     </div>
     <div class="foot"><span id="state">connecting…</span><span id="block"></span></div>
   </div>
-</div>
-<div class="wrap pwidget" id="pw">
-  <div class="pill" id="pw-pill" title="PAPER staking: click to expand, drag to move">
-    <span class="ptoken">P</span><span id="pw-pill-text">PAPER</span>
-  </div>
-  <div class="panel" id="pw-panel" hidden>
-    <div class="head" id="pw-head">
-      <span class="ptoken">P</span>
-      <span class="title">PAPER staking</span>
-      <button class="btn" id="pw-collapse" title="Collapse" aria-label="Collapse">–</button>
-    </div>
-    <div class="grid">
-      <div class="cell"><span class="lbl">Total supply</span><span class="val" id="pw-supply">--</span></div>
-      <div class="cell"><span class="lbl">Total staked</span><span class="val" id="pw-total">--</span><span class="small" id="pw-total-pct"></span></div>
-    </div>
-    <div id="pw-connect" class="pwsec" hidden>
-      <span class="small">Connect your wallet to stake PAPER and claim rewards.</span>
-      <div class="actions"><button class="action" id="pw-connect-btn" type="button">Connect wallet</button></div>
-    </div>
-    <div id="pw-acct" hidden>
-      <div class="grid">
-        <div class="cell"><span class="lbl">In your wallet</span><span class="val" id="pw-wallet">--</span></div>
-        <div class="cell"><span class="lbl">Your stake</span><span class="val" id="pw-staked">--</span><span class="small" id="pw-share"></span></div>
-      </div>
-      <div class="pwsec">
-        <span class="lbl">Stake</span>
-        <div class="stakerow">
-          <input id="st-amount" inputmode="decimal" placeholder="PAPER amount" aria-label="PAPER to stake" autocomplete="off" />
-          <button class="link" id="st-max" type="button">Max</button>
-          <button class="action" id="st-submit" type="button" disabled>Stake</button>
-        </div>
-        <div id="st-msg" class="small" hidden></div>
-      </div>
-      <div class="pwsec">
-        <div class="row">
-          <span><span class="lbl">Rewards (USDC)</span><span class="val" id="pw-rewards">--</span></span>
-          <button class="action" id="cl-submit" type="button" disabled>Claim</button>
-        </div>
-        <div id="cl-msg" class="small" hidden></div>
-      </div>
-    </div>
-  </div>
 </div>`;
   const $ = (id) => root.getElementById(id);
 
-  // pw: the PAPER widget, by default a pill to the right of the main panel.
-  let settings = { collapsed: false, left: 16, bottom: 16, pw: { collapsed: true, left: 336, bottom: 16 } };
+  let settings = { collapsed: false, left: 16, bottom: 16 };
   const history = []; // [{t, pending}]
   let snapshot = null;
   let streamState = 'connecting';
@@ -617,7 +588,7 @@
 
   function setMsg(text, cls = '') { sk.msg = text; sk.msgClass = cls; renderSession(); }
 
-  // ---- PAPER widget: supply, your stake, Stake and Claim. The master wallet signs both (Rabby / Ledger);
+  // ---- PAPER staking (full screen): supply, your stake, Stake and Claim. The master wallet signs both (Rabby / Ledger);
   // the session key isn't involved. ----
   const stake = { busy: false, msg: '', cls: '', intentId: null, amountRaw: null };
   const claim = { busy: false, msg: '', cls: '', intentId: null, amountRaw: null };
@@ -628,8 +599,6 @@
     return v >= 1e9 ? `${(v / 1e9).toFixed(2)}B` : v >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : v >= 1e3 ? `${(v / 1e3).toFixed(1)}K` : v.toFixed(2);
   };
   const fmtUsdc = (raw) => `$${(Number(raw) / 1e18).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  // Exact decimal string for a raw amount (for the input; no float rounding), e.g. 3492.186503347517471804.
-  const fromWad = (raw) => { const f = (raw % WAD).toString().padStart(18, '0').replace(/0+$/, ''); return `${raw / WAD}${f ? `.${f}` : ''}`; };
   const pendingStakes = () => [...acct.ops.values()].filter((o) => o.action === 'paperStake' && o.amountRaw !== null).reduce((a, o) => a + o.amountRaw, 0n);
   const pendingClaim = () => [...acct.ops.values()].some((o) => o.action === 'paperClaim');
   // What can still be staked: wallet PAPER minus stakes already waiting in the queue (as the web app checks).
@@ -650,19 +619,16 @@
     renderPaper();
   }
 
+  // "Stake all": the whole wallet balance, minus stakes already waiting in the queue. Returns { amountRaw },
+  // or { quiet } when there's simply nothing to do yet, or { error } worth showing.
   function readStake() {
-    const v = $('st-amount').value.trim().replace(/,/g, '');
-    if (v === '') return { empty: true };
-    if (!/^\d+(\.\d{1,18})?$/.test(v)) return { error: 'Amount: a number of PAPER, up to 18 decimals.' };
-    const amountRaw = BigInt(toWad(v));
-    if (amountRaw <= 0n) return { error: 'Enter more than 0 PAPER.' };
-    if (!trading || trading.error) return { error: trading?.error ?? 'Loading Papertrade’s rules…' };
-    if (trading.paused.includes('paperStake')) return { error: 'Papertrade has paused staking right now.' };
-    if (trading.minStakeRaw > 0n && amountRaw < trading.minStakeRaw) return { error: `The minimum stake is ${fmtPaper(trading.minStakeRaw)} PAPER.` };
+    if (!trading || trading.error) return { quiet: true };
     const free = freePaper();
-    if (free === null) return { error: 'Waiting for your PAPER balance…' };
-    if (amountRaw > free) return { error: `You have ${fmtPaper(free)} PAPER to stake${pendingStakes() > 0n ? ' (after stakes already in the queue)' : ''}.` };
-    return { amountRaw };
+    if (free === null) return { quiet: true };
+    if (free <= 0n) return { quiet: true };
+    if (trading.paused.includes('paperStake')) return { error: 'Papertrade has paused staking right now.' };
+    if (trading.minStakeRaw > 0n && free < trading.minStakeRaw) return { error: `Below the ${fmtPaper(trading.minStakeRaw)} PAPER minimum stake.` };
+    return { amountRaw: free };
   }
 
   // Why Claim isn't possible right now, or null.
@@ -686,11 +652,8 @@
     $('pw-total').title = paperInfo ? `${fmtPaper(paperInfo.staked)} PAPER` : '';
     $('pw-total-pct').textContent = paperInfo && paperInfo.supply > 0n ? `${(Number((paperInfo.staked * 10000n) / paperInfo.supply) / 100).toFixed(2)}% of supply` : '';
     $('pw-connect').hidden = !!sk.master;
-    $('pw-acct').hidden = !sk.master;
+    for (const el of root.querySelectorAll('.pw-acct')) el.hidden = !sk.master;
     const p = acct.paper, c = claimable(), pend = pendingStakes();
-    $('pw-pill-text').textContent = sk.master && p
-      ? `PAPER · staked ${fmtCompact(p.staked)}${c !== null ? ` · ${fmtUsdc(c)}` : ''}`
-      : paperInfo ? `PAPER · supply ${fmtCompact(paperInfo.supply)}` : 'PAPER';
     if (!sk.master) return;
 
     // Your PAPER.
@@ -700,13 +663,11 @@
       ? `${pend > 0n ? `+${fmtPaper(pend)} queued · ` : ''}${((Number(p.staked) / Number(paperInfo.staked)) * 100).toFixed(4)}% of all staked`
       : pend > 0n ? `+${fmtPaper(pend)} queued` : '';
 
-    // Stake: a problem with what's typed comes first; otherwise the last step of the stake flow.
+    // Stake all: the last step of the stake flow, otherwise why it can't run now.
     const r = readStake();
-    $('st-submit').disabled = stake.busy || !!r.empty || !!r.error;
-    $('st-submit').textContent = stake.busy ? 'Staking…' : 'Stake';
-    $('st-max').disabled = stake.busy || !freePaper();
-    const invalid = !stake.busy && r.error && !r.empty;
-    showMsg('st-msg', invalid ? r.error : stake.msg, invalid ? 'bad' : stake.cls);
+    $('st-submit').disabled = stake.busy || !r.amountRaw;
+    $('st-submit').textContent = stake.busy ? 'Staking…' : 'Stake all';
+    showMsg('st-msg', stake.msg || r.error || '', stake.msg ? stake.cls : 'warn');
 
     // Claim.
     $('pw-rewards').textContent = c === null ? '--' : fmtUsdc(c);
@@ -755,10 +716,10 @@
 
   async function doStake() {
     const r = readStake();
-    if (stake.busy || r.error || r.empty) return;
+    if (stake.busy || !r.amountRaw) return;
     const amountRaw = r.amountRaw;
     const ok = confirm(
-      `Stake ${fmtPaper(amountRaw)} PAPER?\n\n` +
+      `Stake all ${fmtPaper(amountRaw)} PAPER in your wallet?\n\n` +
       `Your wallet (${short(sk.master)}) signs a "Stake" message on the PaperStaking contract (0xaad6…f016, HyperEVM). ` +
       `Rabby shows the exact amount; confirm it on your Ledger.\n\n` +
       `Staked PAPER earns a share of Papertrade's fees, paid in USDC. Unstaking is a separate action on Papertrade.`);
@@ -769,7 +730,6 @@
       const sent = await sendWalletSigned('stake', { amountRaw: amountRaw.toString() }, `${fmtPaper(amountRaw)} PAPER`, setStakeMsg);
       stake.intentId = sent.intentId;
       stake.amountRaw = amountRaw;
-      $('st-amount').value = '';
       setStakeMsg(`Submitted (${sent.state}). ${fmtPaper(amountRaw)} PAPER is staked once Papertrade executes it, usually within a minute.`, 'ok');
     } catch (err) {
       setStakeMsg(paperError(err, 'stake'), 'bad');
@@ -816,48 +776,6 @@
     claim.intentId = null;
   }
 
-  // Float the widget: its own position and collapsed state (settings.pw), dragged by its pill or header.
-  function applyPwLayout() {
-    const el = $('pw');
-    if (full?.on) return; // docked in the full-screen sidebar
-    const st = settings.pw;
-    $('pw-pill').hidden = !st.collapsed;
-    $('pw-panel').hidden = st.collapsed;
-    el.style.left = `${st.left}px`;
-    el.style.bottom = `${st.bottom}px`;
-    const r = el.getBoundingClientRect();
-    el.style.left = `${Math.max(0, Math.min(st.left, window.innerWidth - r.width - 8))}px`;
-    el.style.bottom = `${Math.max(0, Math.min(st.bottom, window.innerHeight - r.height - 8))}px`;
-  }
-  window.addEventListener('resize', () => applyPwLayout());
-  new ResizeObserver(() => applyPwLayout()).observe($('pw'));
-  function pwDraggable(handle, onClick) {
-    handle.addEventListener('pointerdown', (e) => {
-      if (e.button !== 0 || e.target.closest('.btn') || full?.on) return;
-      const startX = e.clientX, startY = e.clientY, r = $('pw').getBoundingClientRect();
-      let moved = false;
-      handle.setPointerCapture(e.pointerId);
-      const move = (ev) => {
-        const dx = ev.clientX - startX, dy = ev.clientY - startY;
-        if (!moved && Math.hypot(dx, dy) < 4) return;
-        moved = true;
-        settings.pw.left = Math.round(Math.min(Math.max(0, r.left + dx), window.innerWidth - r.width));
-        settings.pw.bottom = Math.round(Math.min(Math.max(0, window.innerHeight - r.bottom - dy), window.innerHeight - r.height));
-        applyPwLayout();
-      };
-      const up = () => {
-        handle.removeEventListener('pointermove', move);
-        handle.removeEventListener('pointerup', up);
-        if (moved) storage.set(settings);
-        else onClick?.();
-      };
-      handle.addEventListener('pointermove', move);
-      handle.addEventListener('pointerup', up);
-    });
-  }
-  pwDraggable($('pw-pill'), () => { settings.pw.collapsed = false; applyPwLayout(); storage.set(settings); });
-  pwDraggable($('pw-head'));
-  $('pw-collapse').addEventListener('click', () => { settings.pw.collapsed = true; applyPwLayout(); storage.set(settings); });
 
   function renderSession() {
     renderPaper();
@@ -1709,9 +1627,6 @@
     renderOrder();
   });
   $('o-submit').addEventListener('click', submitBatch);
-  $('st-amount').addEventListener('input', () => { if (stake.cls === 'bad') stake.msg = ''; renderStake(); });
-  for (const ev of ['keydown', 'keyup', 'keypress']) $('st-amount').addEventListener(ev, (e) => { e.stopPropagation(); if (ev === 'keydown' && e.key === 'Enter') doStake(); });
-  $('st-max').addEventListener('click', () => { const f = freePaper(); if (f) { $('st-amount').value = fromWad(f); renderStake(); } });
   $('st-submit').addEventListener('click', doStake);
   $('cl-submit').addEventListener('click', doClaim);
   $('pw-connect-btn').addEventListener('click', () => run(connect));
@@ -2018,9 +1933,8 @@
     $('panel').hidden = false;
     $('f-aside').appendChild($('panel')); // the same status / session / order builder, now as the sidebar
     $('f-session-slot').appendChild($('session')); // the session key goes up into the header
-    $('pw').classList.add('docked'); // and the PAPER widget under it
-    $('pw-panel').hidden = false;
-    $('f-aside').appendChild($('pw'));
+    loadPaperInfo(); // the PAPER staking strip (full screen only)
+    setInterval(loadPaperInfo, 60_000);
     document.documentElement.style.overflow = 'hidden'; // the dashboard covers the page; don't scroll it underneath
     watchBbo();
     loadWinFee();
@@ -2095,12 +2009,9 @@
     try { return (await chrome.runtime.sendMessage({ type: 'ui:isFull' }))?.result === true; } catch { return false; }
   };
   Promise.all([storage.get(), isFullTab()]).then(([s, fullTab]) => {
-    settings = { ...settings, ...s, pw: { ...settings.pw, ...(s.pw ?? {}) } };
+    settings = { ...settings, ...s };
     (document.body ?? document.documentElement).appendChild(host);
     applyLayout();
-    applyPwLayout();
-    loadPaperInfo();
-    setInterval(loadPaperInfo, 60_000);
     render();
     start();
     setInterval(render, 1000); // keeps "data Ns old" and the stale state current

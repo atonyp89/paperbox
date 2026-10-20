@@ -6,8 +6,8 @@ the Hyperliquid order-book mid).
 A small floating panel on **exchange.papertrade.xyz** that shows how backed up Papertrade's order queue is,
 so you can check before sending an order. It can also create a **session key** for this extension, which
 your wallet (e.g. Rabby with a Ledger) authorizes with one signature, and **open positions** with that key.
-A separate **PAPER widget** shows PAPER's total supply and lets you stake PAPER and claim rewards (see
-[PAPER widget](#paper-widget)).
+In full screen, a **PAPER staking** strip shows PAPER's total supply and lets you stake PAPER and claim
+rewards (see [PAPER staking](#paper-staking)).
 
 It shows the same numbers as the **Status** tab on Papertrade's trade page, without having to switch tabs:
 
@@ -190,26 +190,24 @@ Example, distance 10, a long and a short:
   between yours. Pick a distance with some room for that, and watch congestion.
 - **Cancelling a queued order is free**, and so is an order that expires unfilled.
 
-## PAPER widget
+## PAPER staking
 
-PAPER has its own floating widget, separate from the queue panel. It starts as a pill to the right of the
-panel (e.g. `PAPER · staked 756.8K · $3.41`); click it to open, drag the pill or the header to move it, and **–**
-to collapse it again. Its position is remembered separately. In full screen it sits in the right-hand column under
-the panel.
+PAPER staking lives in **full screen**, as a strip of cells between the top bar and the equity cards. It isn't
+shown on the normal Papertrade page.
 
 **Protocol figures** (from `/query/protocol/summary`, refreshed every minute; no wallet needed):
 - **Total supply** of PAPER, and **total staked** with its share of the supply. Hover a figure for the exact amount.
 
-**Your PAPER** (once your wallet is connected; the widget has its own **Connect wallet** button):
+**Your PAPER** (once your wallet is connected; the strip has its own **Connect wallet** button):
 - **In your wallet**, and **your stake** with your share of everything staked (plus any stake still queued).
 
-**Stake:**
-- Type an amount, or press **Max** for your whole wallet balance (exact to the last decimal), then **Stake**.
-  It checks the amount first: at least Papertrade's minimum stake (currently **1,000 PAPER**), and no more than
-  your wallet balance minus stakes already in the queue. It also checks that Papertrade hasn't paused staking.
-- Rabby opens a `Stake` request with `user` = your address and `amount` in 18-decimal units (1,500 PAPER =
-  `1500000000000000000000`). It shows **Submitted (queued)**, then **Staked 1,500 PAPER** once it executes (or why
-  it didn't).
+**Stake all** (beside **In your wallet**):
+- Stakes your whole wallet balance, exact to the last decimal (minus any stake already in the queue). There's no
+  amount to type. It's off when there's nothing to stake, when the balance is under Papertrade's minimum stake
+  (currently **1,000 PAPER**, and it says so), or when Papertrade has paused staking.
+- Rabby opens a `Stake` request with `user` = your address and `amount` in 18-decimal units (3,492.19 PAPER =
+  `3492186503347517471804`). It shows **Submitted (queued)**, then **Staked 3,492.19 PAPER** once it executes (or
+  why it didn't).
 
 **Claim rewards:**
 - **Rewards (USDC)** is what you can claim now: `pendingBase + staked × accRewardPerShare / 1e27 − rewardDebt`.
@@ -276,8 +274,9 @@ What it shows:
   25 trades per page. **‹ Prev** / **Next ›** step through them, and Next fetches older trades from
   Papertrade (75 at a time) when you reach the end of what's loaded. Newly closed trades are added at the top
   without losing your place.
-- **Right column:** the order builder, batches and guards, then the PAPER widget. The queue status box and the
-  session key aren't repeated there, since the top bar shows both.
+- **PAPER staking strip** (under the top bar): supply, total staked, your wallet and stake, Stake and Claim.
+- **Right column:** the order builder, batches and guards. The queue status box and the session key aren't
+  repeated there, since the top bar shows both.
 
 PnL here uses Papertrade's exact valuation (deadband, impact haircut, win fee), checked identical to Papertrade's
 own formula on 8,000 random positions. It matches what Papertrade's own
