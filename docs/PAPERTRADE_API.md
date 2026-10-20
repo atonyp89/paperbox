@@ -286,7 +286,7 @@ All `GET`, base `https://exchange.papertrade.xyz`, server-side only (Origin rule
 |---|---|---|
 | ✓ | `/query/protocol/summary` | TVL, margin, LP, fees, open-position count, PAPER supply / staked / emission parameters |
 | ✓ | `/query/protocol/market-stats` | `{ok, markets: {"0": {volume_24h}}}` |
-| ✓ | `/state/house/current` | LP ("house") time series: LP value, PnL, OI |
+| ✓ | `/state/house/current` | House fund, live. `head` = `[timeMs, lpBalance, traderOpenPnl, queueDebt, btcLong, btcShort, ethLong, ethShort]` in USD (plain numbers, not WAD); `heads.{1000,60000,3600000,86400000}` hold the same as column series (`lp`, `pnl`, `q`, `bl`, `bs`, `el`, `es`). Open House PnL = −`traderOpenPnl`; House Funds = LP + Open House PnL − Queue Debt; net OI = long − short (the house carries the opposite). |
 | ✓ | `/query/notices` | `{notices: []}` |
 | ✓ | `/query/markets/{id}/price-history?fromMs=&intervalMs=&toMs=` | Price ticks. Only the app's exact parameter sets are accepted, e.g. `intervalMs=125` over a 60-second window aligned to whole minutes. |
 | ✓ | `/query/accounts/{addr}/portfolio-history?range=1h\|1d\|1w\|all` | Equity history |

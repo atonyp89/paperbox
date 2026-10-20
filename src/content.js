@@ -207,13 +207,17 @@
   .ptoken { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; flex: none;
     background: var(--o-ink); color: var(--o-panel); font-size: 10px; font-weight: 800; }
   /* PAPER staking: a strip of cells above the summary cards, full screen only. */
-  .fpaper { display: flex; flex-wrap: wrap; gap: 1px; background: var(--o-border); border-bottom: 1px solid var(--o-border); }
-  .fpcell { background: var(--o-panel); padding: 10px 20px; flex: 1 1 150px; min-width: 0; display: grid; align-content: start; gap: 3px; }
+  /* The PAPER and House strips share one column grid (a title column + five equal columns), so their
+     separators line up. */
+  .fpaper { display: grid; grid-template-columns: 170px repeat(5, minmax(0, 1fr)); gap: 1px; background: var(--o-border); border-bottom: 1px solid var(--o-border); }
+  .fpcell { background: var(--o-panel); padding: 10px 20px; min-width: 0; display: grid; align-content: start; gap: 3px; }
+  .fpspan3 { grid-column: span 3; }
+  @media (max-width: 1240px) { .fpaper { grid-template-columns: 140px repeat(5, minmax(0, 1fr)); } .fpcell { padding: 10px 12px; } }
+  @media (max-width: 900px) { .fpaper { grid-template-columns: repeat(3, minmax(0, 1fr)); } .fptitle { grid-column: 1 / -1; } }
   .fpcell .val { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .fpcell .small { display: block; }
-  .fpwide { flex: 2 1 320px; }
-  .fpmid { flex: 1.5 1 240px; }
-  .fptitle { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; font-weight: 700; }
+  .fptitle { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 4px 8px; font-weight: 700; }
+  .fptitle .small { font-weight: 400; }
   .stakerow { display: flex; align-items: center; gap: 8px; min-width: 0; }
   .stakerow .action:disabled { opacity: .45; cursor: default; }
   .sides { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
@@ -251,7 +255,7 @@
   .batch > .bexec.good b { color: var(--o-pos); } .batch > .bexec.bad b { color: var(--o-neg); }
 
   /* ---- Full-screen dashboard (a Papertrade tab opened with ⤢) ---- */
-  .full { position: fixed; inset: 0; background: var(--o-page); color: var(--o-ink); display: grid; grid-template-rows: auto auto auto minmax(0, 1fr); overflow: hidden;
+  .full { position: fixed; inset: 0; background: var(--o-page); color: var(--o-ink); display: grid; grid-template-rows: auto auto auto auto minmax(0, 1fr); overflow: hidden;
     font: 13px/1.45 var(--o-font); }
   .ftop { display: flex; align-items: center; gap: 16px; padding: 10px 20px; border-bottom: 1px solid var(--o-border); flex-wrap: wrap; }
   .ftitle { font-weight: 700; font-size: 15px; }
@@ -314,7 +318,7 @@
   .fpager { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--o-border); }
   /* Narrow windows (below ~1160px): one column, the order builder under the tables; the whole dashboard scrolls. */
   @media (max-width: 1160px) {
-    .full { overflow: auto; grid-template-rows: auto auto auto auto; }
+    .full { overflow: auto; grid-template-rows: auto auto auto auto auto; }
     .fbody { grid-template-columns: minmax(0, 1fr); }
     .fmain { overflow: visible; }
     .faside { border-left: 0; border-top: 1px solid var(--o-border); overflow: visible; }
@@ -333,21 +337,29 @@
     <div class="fpcell fptitle"><span class="ptoken">P</span><span>PAPER staking</span></div>
     <div class="fpcell"><span class="lbl">Total supply</span><span class="val" id="pw-supply">--</span></div>
     <div class="fpcell"><span class="lbl">Total staked</span><span class="val" id="pw-total">--</span><span class="small" id="pw-total-pct"></span></div>
-    <div class="fpcell fpwide" id="pw-connect" hidden>
+    <div class="fpcell fpspan3" id="pw-connect" hidden>
       <span class="small">Connect your wallet to stake PAPER and claim rewards.</span>
       <div class="stakerow"><button class="action" id="pw-connect-btn" type="button">Connect wallet</button></div>
     </div>
-    <div class="fpcell fpmid pw-acct">
+    <div class="fpcell pw-acct">
       <span class="lbl">In your wallet</span>
       <div class="stakerow"><span class="val" id="pw-wallet">--</span><button class="action" id="st-submit" type="button" disabled title="Stake all the PAPER in your wallet">Stake all</button></div>
       <div id="st-msg" class="small" hidden></div>
     </div>
     <div class="fpcell pw-acct"><span class="lbl">Your stake</span><span class="val" id="pw-staked">--</span><span class="small" id="pw-share"></span></div>
-    <div class="fpcell fpmid pw-acct">
+    <div class="fpcell pw-acct">
       <span class="lbl">Rewards (USDC)</span>
       <div class="stakerow"><span class="val" id="pw-rewards">--</span><button class="action" id="cl-submit" type="button" disabled>Claim</button></div>
       <div id="cl-msg" class="small" hidden></div>
     </div>
+  </section>
+  <section class="fpaper" id="house" aria-label="House fund">
+    <div class="fpcell fptitle"><span class="ptoken">H</span><span>House fund</span><span class="small" id="hs-age"></span></div>
+    <div class="fpcell" title="LP Balance + Open House PnL − Queue Debt"><span class="lbl">House funds</span><span class="val" id="hs-funds">--</span><span class="small">LP + open PnL − queue debt</span></div>
+    <div class="fpcell" title="Gross house bankroll: free LP plus the payout reserve"><span class="lbl">LP balance</span><span class="val" id="hs-lp">--</span></div>
+    <div class="fpcell" title="The inverse of aggregate trader PnL across the open book"><span class="lbl">Open house PnL</span><span class="val" id="hs-pnl">--</span><span class="small">inverse of traders' open PnL</span></div>
+    <div class="fpcell" title="USDC owed to queued winners"><span class="lbl">Queue debt</span><span class="val" id="hs-debt">--</span><span class="small">owed to queued winners</span></div>
+    <div class="fpcell" title="Long minus short notional; the house carries the opposite exposure"><span class="lbl">Net open interest</span><span class="val" id="hs-net">--</span><span class="small" id="hs-net-sub"></span></div>
   </section>
   <dl class="fcards" id="f-cards"></dl>
   <div class="fbody">
@@ -1925,6 +1937,42 @@
     note.className = `small ftabnote ${full.tab === 'positions' && acct.streamLive === false ? 'warn' : ''}`;
   }
 
+  // ---- House fund (full screen): from /state/house/current, whose `head` row is
+  // [timeMs, lpBalance, traderOpenPnl, queueDebt, btcLong, btcShort, ethLong, ethShort] in USD. ----
+  const house = { head: null, at: 0, error: false };
+  async function loadHouse() {
+    try {
+      const d = await (await fetch(`${API}/state/house/current`, { cache: 'no-store' })).json();
+      const h = d?.head;
+      if (!Array.isArray(h) || h.length < 8 || !h.every((x) => typeof x === 'number' && Number.isFinite(x))) throw new Error('unexpected house data');
+      house.head = h; house.at = Date.now(); house.error = false;
+    } catch { house.error = true; }
+    renderHouse();
+  }
+  const usdC = (v) => { const a = Math.abs(v); return `${v < 0 ? '−' : ''}$${a >= 1e9 ? `${(a / 1e9).toFixed(2)}B` : a >= 1e6 ? `${(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `${(a / 1e3).toFixed(1)}K` : a.toFixed(2)}`; };
+  const usdS = (v) => (v > 0 ? `+${usdC(v)}` : usdC(v));
+  function renderHouse() {
+    if (!full.on) return;
+    const h = house.head;
+    const age = house.at ? Math.round((Date.now() - house.at) / 1000) : null;
+    $('hs-age').textContent = h ? (house.error || age > 30 ? `stale · ${age}s` : 'live') : house.error ? 'unavailable' : 'loading…';
+    $('hs-age').className = `small ${!h || house.error || age > 30 ? 'warn' : 'ok'}`;
+    if (!h) return;
+    const [, lp, traderPnl, debt, bl, bs, el, es] = h;
+    const housePnl = -traderPnl, funds = lp + housePnl - debt;
+    const exact = (v) => v.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    const put = (id, text, title, cls = '') => { $(id).textContent = text; $(id).title = title; $(id).className = `val ${cls}`; };
+    put('hs-funds', usdC(funds), exact(funds), funds < 0 ? 'bad' : '');
+    put('hs-lp', usdC(lp), exact(lp));
+    put('hs-pnl', usdS(housePnl), exact(housePnl), housePnl > 0 ? 'ok' : housePnl < 0 ? 'bad' : '');
+    put('hs-debt', usdC(debt), exact(debt), debt > 0 ? 'warn' : '');
+    const net = bl - bs + (el - es);
+    put('hs-net', usdS(net), exact(net));
+    const side = (v) => (Math.abs(v) < 0.5 ? 'flat' : v > 0 ? 'net long' : 'net short');
+    $('hs-net-sub').textContent = `traders ${side(net)} · BTC ${usdS(bl - bs)} · ETH ${usdS(el - es)}`;
+    $('hs-net-sub').title = `BTC long ${exact(bl)} · short ${exact(bs)}\nETH long ${exact(el)} · short ${exact(es)}\nThe house carries the opposite exposure.`;
+  }
+
   async function enterFull() {
     full.on = true;
     host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;';
@@ -1935,6 +1983,9 @@
     $('f-session-slot').appendChild($('session')); // the session key goes up into the header
     loadPaperInfo(); // the PAPER staking strip (full screen only)
     setInterval(loadPaperInfo, 60_000);
+    loadHouse(); // the House fund strip
+    setInterval(loadHouse, 5_000);
+    setInterval(renderHouse, 1_000); // keeps "live / stale" honest between polls
     document.documentElement.style.overflow = 'hidden'; // the dashboard covers the page; don't scroll it underneath
     watchBbo();
     loadWinFee();

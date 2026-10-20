@@ -275,6 +275,16 @@ What it shows:
   Papertrade (75 at a time) when you reach the end of what's loaded. Newly closed trades are added at the top
   without losing your place.
 - **PAPER staking strip** (under the top bar): supply, total staked, your wallet and stake, Stake and Claim.
+- **House fund strip** (under that), from `/state/house/current`, refreshed every 5 seconds, as Papertrade's
+  House page shows them:
+  - **House funds** = LP balance + open house PnL − queue debt;
+  - **LP balance**: the house bankroll (free LP plus the payout reserve);
+  - **Open house PnL**: the inverse of traders' combined open PnL (green when the house is up);
+  - **Queue debt**: USDC owed to winners still waiting in the queue (amber when it isn't zero);
+  - **Net open interest**: long − short notional, total and per market (BTC, ETH); the house carries the
+    opposite side. Hover for the long and short totals.
+
+  The strip's title says **live**, or **stale** with the age if updates stop.
 - **Right column:** the order builder, batches and guards. The queue status box and the session key aren't
   repeated there, since the top bar shows both.
 
