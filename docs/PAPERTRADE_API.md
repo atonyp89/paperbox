@@ -284,7 +284,8 @@ All `GET`, base `https://exchange.papertrade.xyz`, server-side only (Origin rule
 
 | | Endpoint | Returns |
 |---|---|---|
-| ✓ | `/query/protocol/summary` | TVL, margin, LP, fees, open-position count, PAPER supply / staked / emission parameters |
+| ✓ | `/query/protocol/summary` | TVL, margin, LP, fees, open-position count, PAPER supply / staked / emission parameters. `fees.lifetime` = USDC paid to stakers since launch. |
+| ✓ | `/query/protocol/history?interval=1m\|1d` | Stats series (`columns.{tvl, stakingRewards, volume, volumeBtc, volumeEth, traderPnl, users, liquidation, trades, paperSupply, paperStaked, paperRevenue}`) and `totals`. `traderPnl` is cumulative **net** trader PnL (not gross losses); `liquidation` is liquidated notional. No gross-loss total is published. |
 | ✓ | `/query/protocol/market-stats` | `{ok, markets: {"0": {volume_24h}}}` |
 | ✓ | `/state/house/current` | House fund, live. `head` = `[timeMs, lpBalance, traderOpenPnl, queueDebt, btcLong, btcShort, ethLong, ethShort]` in USD (plain numbers, not WAD); `heads.{1000,60000,3600000,86400000}` hold the same as column series (`lp`, `pnl`, `q`, `bl`, `bs`, `el`, `es`). Open House PnL = −`traderOpenPnl`; House Funds = LP + Open House PnL − Queue Debt; net OI = long − short (the house carries the opposite). |
 | ✓ | `/query/notices` | `{notices: []}` |

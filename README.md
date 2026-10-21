@@ -242,6 +242,7 @@ shown on the normal Papertrade page.
 
 **Protocol figures** (from `/query/protocol/summary`, refreshed every minute; no wallet needed):
 - **Total supply** of PAPER, and **total staked** with its share of the supply. Hover a figure for the exact amount.
+- **Staker rewards**: USDC paid to stakers since launch (`fees.lifetime`).
 
 **Your PAPER** (once your wallet is connected; the strip has its own **Connect wallet** button):
 - **In your wallet**, and **your stake** with your share of everything staked (plus any stake still queued).
@@ -327,6 +328,10 @@ What it shows:
   - **LP balance**: the house bankroll (free LP plus the payout reserve);
   - **Open house PnL**: the inverse of traders' combined open PnL (green when the house is up);
   - **Queue debt**: USDC owed to winners still waiting in the queue (amber when it isn't zero);
+  - **Net take rate**: how much of every $1 traders lose reaches stakers, as total staker rewards ÷ gross trader
+    losses (about 21.7¢ at launch + 2 weeks). Gross losses aren't published, so they're estimated from the PAPER
+    minted: the curve's ratchet progress plus the supply minted at the early flat rate. Hover for the figures. The
+    true gross may be somewhat higher, which would make the rate a little lower;
   - **Net open interest**: long − short notional, total and per market (BTC, ETH); the house carries the
     opposite side. Hover for the long and short totals.
 

@@ -207,15 +207,16 @@
   .ptoken { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; flex: none;
     background: var(--o-ink); color: var(--o-panel); font-size: 10px; font-weight: 800; }
   /* PAPER staking: a strip of cells above the summary cards, full screen only. */
-  /* The PAPER and House strips share one column grid (a title column + five equal columns), so their
+  /* The PAPER and House strips share one column grid (a title column + six equal columns), so their
      separators line up. */
-  .fpaper { display: grid; grid-template-columns: 170px repeat(5, minmax(0, 1fr)); gap: 1px; background: var(--o-border); border-bottom: 1px solid var(--o-border); }
+  .fpaper { display: grid; grid-template-columns: 170px repeat(6, minmax(0, 1fr)); gap: 1px; background: var(--o-border); border-bottom: 1px solid var(--o-border); }
   .fpcell { background: var(--o-panel); padding: 10px 20px; min-width: 0; display: grid; align-content: start; gap: 3px; }
   .fpspan3 { grid-column: span 3; }
-  @media (max-width: 1240px) { .fpaper { grid-template-columns: 140px repeat(5, minmax(0, 1fr)); } .fpcell { padding: 10px 12px; } }
+  @media (max-width: 1240px) { .fpaper { grid-template-columns: 140px repeat(6, minmax(0, 1fr)); } .fpcell { padding: 10px 12px; } }
   @media (max-width: 900px) { .fpaper { grid-template-columns: repeat(3, minmax(0, 1fr)); } .fptitle { grid-column: 1 / -1; } }
   .fpcell .val { font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .fpcell .small { display: block; }
+  .fpcell .stakerow { flex-wrap: wrap; row-gap: 4px; } /* narrow cells: the button drops under the value */
   .fptitle { display: flex; flex-wrap: wrap; align-items: center; align-content: center; gap: 4px 8px; font-weight: 700; }
   .fptitle .small { font-weight: 400; }
   .stakerow { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -345,6 +346,7 @@
     <div class="fpcell fptitle"><span class="ptoken">P</span><span>PAPER staking</span></div>
     <div class="fpcell"><span class="lbl">Total supply</span><span class="val" id="pw-supply">--</span></div>
     <div class="fpcell"><span class="lbl">Total staked</span><span class="val" id="pw-total">--</span><span class="small" id="pw-total-pct"></span></div>
+    <div class="fpcell" title="USDC paid to PAPER stakers since launch"><span class="lbl">Staker rewards</span><span class="val" id="pw-rewards-total">--</span><span class="small">paid since launch</span></div>
     <div class="fpcell fpspan3" id="pw-connect" hidden>
       <span class="small">Connect your wallet to stake PAPER and claim rewards.</span>
       <div class="stakerow"><button class="action" id="pw-connect-btn" type="button">Connect wallet</button></div>
@@ -367,6 +369,7 @@
     <div class="fpcell" title="Gross house bankroll: free LP plus the payout reserve"><span class="lbl">LP balance</span><span class="val" id="hs-lp">--</span></div>
     <div class="fpcell" title="The inverse of aggregate trader PnL across the open book"><span class="lbl">Open house PnL</span><span class="val" id="hs-pnl">--</span><span class="small">inverse of traders' open PnL</span></div>
     <div class="fpcell" title="USDC owed to queued winners"><span class="lbl">Queue debt</span><span class="val" id="hs-debt">--</span><span class="small">owed to queued winners</span></div>
+    <div class="fpcell" id="hs-take-cell"><span class="lbl">Net take rate</span><span class="val" id="hs-take">--</span><span class="small" id="hs-take-sub">staker rewards ÷ gross losses</span></div>
     <div class="fpcell" title="Long minus short notional; the house carries the opposite exposure"><span class="lbl">Net open interest</span><span class="val" id="hs-net">--</span><span class="small" id="hs-net-sub"></span></div>
   </section>
   <dl class="fcards" id="f-cards"></dl>
@@ -641,9 +644,12 @@
     try {
       const d = await (await fetch(`${API}/query/protocol/summary`, { cache: 'no-store' })).json();
       if (d?.paper?.supply === undefined) throw new Error('no PAPER figures');
-      paperInfo = { supply: BigInt(d.paper.supply), staked: BigInt(d.paper.staked) };
+      const n = (v) => (v === undefined ? null : Number(BigInt(v)) / 1e18);
+      paperInfo = { supply: BigInt(d.paper.supply), staked: BigInt(d.paper.staked), rewards: d.fees?.lifetime === undefined ? null : BigInt(d.fees.lifetime),
+        tail: n(d.paper.tailProgress), rate: n(d.paper.rate), decay: n(d.paper.decay) };
     } catch { /* keep the last figures; retried next minute */ }
     renderPaper();
+    renderHouse();
   }
 
   // "Stake all": the whole wallet balance, minus stakes already waiting in the queue. Returns { amountRaw },
@@ -678,6 +684,8 @@
     $('pw-total').textContent = paperInfo ? `${fmtCompact(paperInfo.staked)}` : '--';
     $('pw-total').title = paperInfo ? `${fmtPaper(paperInfo.staked)} PAPER` : '';
     $('pw-total-pct').textContent = paperInfo && paperInfo.supply > 0n ? `${(Number((paperInfo.staked * 10000n) / paperInfo.supply) / 100).toFixed(2)}% of supply` : '';
+    $('pw-rewards-total').textContent = paperInfo?.rewards == null ? '--' : `$${fmtCompact(paperInfo.rewards)}`;
+    $('pw-rewards-total').title = paperInfo?.rewards == null ? '' : (Number(paperInfo.rewards) / 1e18).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
     $('pw-connect').hidden = !!sk.master;
     for (const el of root.querySelectorAll('.pw-acct')) el.hidden = !sk.master;
     const p = acct.paper, c = claimable(), pend = pendingStakes();
@@ -1996,6 +2004,23 @@
     const age = house.at ? Math.round((Date.now() - house.at) / 1000) : null;
     $('hs-age').textContent = h ? (house.error || age > 30 ? `stale · ${age}s` : 'live') : house.error ? 'unavailable' : 'loading…';
     $('hs-age').className = `small ${!h || house.error || age > 30 ? 'warn' : 'ok'}`;
+    // Net take rate: total staker rewards ÷ gross trader losses, i.e. how much of every $1 lost reached stakers.
+    // Papertrade doesn't publish gross losses, so they're estimated from the PAPER minted (each $1 lost mints PAPER):
+    // the curve's tailProgress (≈ $1 per $1 lost), plus whatever supply the curve can't account for, minted at
+    // the flat rate (early losses, when the house was under its cliff).
+    const pi = paperInfo;
+    if (pi?.rewards != null && pi.tail != null && pi.rate > 0 && pi.decay > 0) {
+      const supply = Number(pi.supply) / 1e18, tailMinted = (pi.rate * pi.decay * pi.tail) / (pi.decay + pi.tail);
+      const gross = pi.tail + Math.max(0, supply - tailMinted) / pi.rate, rewards = Number(pi.rewards) / 1e18;
+      if (gross > 0) {
+        const take = rewards / gross;
+        $('hs-take').textContent = `${(take * 100).toFixed(1)}¢`;
+        $('hs-take-sub').textContent = `per $1 lost · ${usdC(rewards)} ÷ est. ${usdC(gross)}`;
+        $('hs-take-cell').title = `Staker rewards ${usdC(rewards)} ÷ estimated gross trader losses ${usdC(gross)} = ${(take * 100).toFixed(2)}¢ of every $1 lost.\n` +
+          `Gross losses aren't published; they're estimated from the PAPER minted: ${usdC(pi.tail)} of ratchet progress plus ${usdC(gross - pi.tail)} minted at the flat ${pi.rate} PAPER per $1. ` +
+          `Losses made while the house is below its previous high mint PAPER without advancing the ratchet, so the true figure may be somewhat lower.`;
+      }
+    }
     if (!h) return;
     const [, lp, traderPnl, debt, bl, bs, el, es] = h;
     const housePnl = -traderPnl, funds = lp + housePnl - debt;
