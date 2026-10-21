@@ -190,6 +190,44 @@ Example, distance 10, a long and a short:
   between yours. Pick a distance with some room for that, and watch congestion.
 - **Cancelling a queued order is free**, and so is an order that expires unfilled.
 
+## Hyperliquid positions (full screen)
+
+The **Positions** tab has two sections: **Papertrade** (your positions there, Close All, Roll, and the pending
+queue) and, under it, **Hyperliquid**: your open **perp positions on Hyperliquid**, for the main account and every
+subaccount. It's **read-only**: nothing is signed, and it uses only Hyperliquid's
+public info API.
+
+- **Which account:** the connected wallet by default; Hyperliquid uses the same address. Type another master
+  address in the bar to watch that one instead (it's remembered; clear it to go back to the wallet).
+- **Positions:** account (main or the subaccount's name), market and side, leverage (cross or isolated), size,
+  notional, entry, mark, unrealized PnL with ROE, liquidation price, margin, and funding received since open
+  (negative means paid). Largest first. **Net exposure** rows at the bottom add each coin up across all accounts.
+- **Open orders**, with a **Papertrade match** for each. The idea: every Papertrade position has a resting
+  Hyperliquid order in the **same direction at its bust price**, so if Papertrade liquidates the position the order
+  fills and you stay delta neutral.
+  - An order matches a Papertrade position when it's the same coin, the same direction (a buy for a long, a sell
+    for a short), and its price is within **±$1** of the position's bust price (for a trigger order, the trigger
+    price). Closest pairs are matched first, one order per position.
+  - A matched order shows **✓ #id LONG/SHORT**, the bust price, the gap (Δ), and whether its size equals the
+    position's size in coins (within 1%; otherwise the percentage it covers).
+  - An unmatched order says **no matching position**, with the nearest bust in the same coin and direction.
+  - The heading says how many Papertrade positions are covered and lists the ones with **no order at their bust**.
+  - Orders are read for the main account and every subaccount that holds money or positions.
+- **Hedge warnings** (re-checked every second against your current Papertrade positions):
+  - **A badge in the top bar**, on every tab: **✓ 4 of 4 hedged**, or in red **⚠ 1 unhedged · 1 stray HL order**.
+    Click it to jump to the Hyperliquid orders. It says "checking…" until Hyperliquid's orders have loaded, and
+    "Hyperliquid unavailable" if they can't be read, so it never claims you're hedged without data.
+  - **Unhedged:** a Papertrade position with no matching Hyperliquid order. Its row shows **no HL hedge** under the
+    bust price (hedged rows show **HL hedge ✓**).
+  - **Stray:** a Hyperliquid order that matches no Papertrade position, e.g. left behind after you closed one. If
+    price reaches it, it would open a position you no longer need. Stray rows are tinted in the orders table.
+  - The Positions tab's count gets a ⚠ while anything is unhedged or stray.
+- **Accounts:** account value, margin used, notional and withdrawable for the main account and every subaccount
+  with money or positions; empty subaccounts are counted, not listed.
+- It refreshes every 10 seconds while full screen is open: `clearinghouseState` for the main account,
+  `subAccounts` for the rest, and `frontendOpenOrders` for each account that holds money or positions. The section's
+  heading says how many positions are open.
+
 ## Roll (full screen)
 
 **Roll** is an automatic loss reset for a single position. When a position's **PnL if closed now** falls to your

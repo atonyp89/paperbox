@@ -1,6 +1,6 @@
 {
   "name": "paperbox",
-  "version": "1.6.1",
+  "version": "1.7.0",
   "private": true,
   "description": "Paperbox: a Chrome extension for exchange.papertrade.xyz (queue status, batch orders, full-screen positions).",
   "type": "module",

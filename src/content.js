@@ -260,6 +260,11 @@
     font: 13px/1.45 var(--o-font); }
   .ftop { display: flex; align-items: center; gap: 16px; padding: 10px 20px; border-bottom: 1px solid var(--o-border); flex-wrap: wrap; }
   .ftitle { font-weight: 700; font-size: 15px; }
+  .fhedge { all: unset; cursor: pointer; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 4px; border: 1px solid var(--o-border); white-space: nowrap; }
+  .fhedge.ok { color: var(--o-pos); }
+  .fhedge.bad { color: var(--o-neg); border-color: color-mix(in srgb, var(--o-neg) 45%, transparent); background: color-mix(in srgb, var(--o-neg) 10%, transparent); }
+  .fhedge.unknown { color: var(--o-muted); }
+  .ftable tr.stray td { background: color-mix(in srgb, var(--o-neg) 8%, transparent); }
   /* Full screen: the header already shows the queue status, so the sidebar drops its status box; the session
      key (status, expiry, Replace / Remove, and its messages) moves up into the header. */
   .faside #panel > .grid, .faside #panel > .spark { display: none !important; }
@@ -309,6 +314,9 @@
     font: 600 12px var(--o-font); font-variant-numeric: tabular-nums; color: var(--o-ink); text-align: right; }
   .frollbar input:focus { border-color: var(--o-chart); }
   .frollbar input.bad { border-color: var(--o-neg); }
+  #hl-orders td.hmatch, #hl-orders th:last-child { text-align: left; }
+  .ftable td.htype { color: var(--o-muted); font-size: 11px; }
+  .frollbar input.hladdr { width: 360px; max-width: 100%; text-align: left; font: 500 12px var(--o-mono, ui-monospace, Menlo, monospace); }
   .ftable td .rollst { white-space: nowrap; }
   .ftable .facts { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
   .ftabbar { display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 0 10px 0 5px; background: var(--o-sunken); border-bottom: 1px solid var(--o-border); }
@@ -323,6 +331,11 @@
   .fbtn:disabled { opacity: .45; cursor: default; }
   .fbtn[hidden] { display: none; }
   .fsubh { display: flex; align-items: baseline; gap: 10px; padding: 12px 14px 6px; border-top: 1px solid var(--o-border); }
+  .fsubh.fsec { padding: 14px 14px 8px; border-top-width: 2px; } /* a venue section (Papertrade, Hyperliquid), not a sub-table */
+  .fsubh.fsec h4 { color: var(--o-ink); font-size: 12px; }
+  .fsubh.fsec.first { border-top: 0; }
+  .fsubh .ftabnote { flex: 1; text-align: left; }
+  .fsubh .fbtn { margin-left: auto; align-self: center; }
   .fsubh h4 { margin: 0; font-size: 11px; font-weight: 600; color: var(--o-muted); }
   .fpager { display: flex; align-items: center; gap: 8px; padding: 8px 14px; border-top: 1px solid var(--o-border); }
   /* Narrow windows (below ~1190px): one column, the order builder under the tables; the whole dashboard scrolls. */
@@ -337,6 +350,7 @@
   <header class="ftop">
     <span class="ftitle">Paperbox</span>
     <span class="fnet" id="f-net"></span>
+    <button class="fhedge" id="f-hedge" type="button" hidden title="Liquidation hedges: a Hyperliquid order in the same direction at each Papertrade position's bust price. Click to see the orders."></button>
     <span class="fspacer"></span>
     <span class="small" id="f-account"></span>
     <div class="fsession" id="f-session-slot"></div>
@@ -382,9 +396,9 @@
             <button class="ftab" data-ftab="history" type="button">History</button>
           </nav>
           <span class="small ftabnote" id="f-tab-note"></span>
-          <button class="fbtn" id="f-close-all" type="button" title="Stage a close of every open position in the order builder">Close All</button>
         </div>
         <div id="f-tab-positions">
+          <div class="fsubh fsec first"><h4>Papertrade</h4><span class="small ftabnote" id="f-pt-note"></span><button class="fbtn" id="f-close-all" type="button" title="Stage a close of every open position in the order builder">Close All</button></div>
           <div class="frollbar" id="f-rollbar">
             <span class="lbl" title="Checks applied to every roll's batch. Each roll's trigger (a loss in dollars) is set when you press Roll on a row.">Roll checks</span>
             <label>queue distance <input id="r-distance" inputmode="numeric" placeholder="off" value="5" /></label>
@@ -395,6 +409,17 @@
           <div class="fscroll"><table class="ftable" id="f-pos"></table></div>
           <div class="fsubh"><h4>Pending queue</h4><span class="small" id="f-pend-note"></span></div>
           <div class="fscroll"><table class="ftable" id="f-pend"></table></div>
+          <div class="fsubh fsec"><h4>Hyperliquid</h4><span class="small" id="hl-head-note">read-only · main account and subaccounts</span></div>
+          <div class="frollbar">
+            <span class="lbl" title="Read-only: open perp positions of this address and its subaccounts, from Hyperliquid's public info API">Hyperliquid account</span>
+            <input id="hl-addr" class="hladdr" placeholder="your connected wallet" spellcheck="false" autocomplete="off" aria-label="Hyperliquid master address" />
+            <span class="small" id="hl-note"></span>
+          </div>
+          <div class="fscroll"><table class="ftable" id="hl-pos"></table></div>
+          <div class="fsubh"><h4>Open orders</h4><span class="small ftabnote" id="hl-orders-note"></span></div>
+          <div class="fscroll"><table class="ftable" id="hl-orders"></table></div>
+          <div class="fsubh"><h4>Accounts</h4><span class="small" id="hl-accts-note"></span></div>
+          <div class="fscroll"><table class="ftable" id="hl-accts"></table></div>
         </div>
         <div id="f-tab-history" hidden>
           <div class="fscroll"><table class="ftable" id="f-hist"></table></div>
@@ -1842,6 +1867,9 @@
       : '<span class="warn">network status unavailable</span>';
     $('f-account').textContent = sk.master ? `wallet ${short(sk.master)}` : ''; // the session block beside it covers the rest
 
+    const hs = hedgeStatus();
+    renderHedgeBadge(hs);
+    const hedgeLine = (id) => (!hs ? '' : hs.uncovered.has(id) ? '<span class="sub bad">no HL hedge</span>' : '<span class="sub ok">HL hedge ✓</span>');
     // Positions, valued exactly like the Papertrade UI.
     let adjustedSum = 0n, payoutSum = 0n, costSum = 0n, marginSum = 0n, notionalSum = 0n, priced = true;
     const rows = [...acct.positions.values()].sort((a, b) => Number(b.id) - Number(a.id)).map((p) => {
@@ -1867,6 +1895,7 @@
       } else {
         priced = false;
       }
+      riskCell = riskCell.replace(/<\/td>$/, `${hedgeLine(p.id)}</td>`);
       const staged_ = staged.some((x) => x.kind === 'close' && x.positionId === p.id);
       return `<tr>
         <td title="Opened ${fmtTime(p.openedAtMs)}">#${p.id}<span class="sub">open ${fmtDur(Date.now() - p.openedAtMs)}</span></td>
@@ -1883,7 +1912,8 @@
     const posNote = acct.streamLive === false
       ? 'Account stream reconnecting (Papertrade may be rate-limiting); showing the last data received'
       : full.winFeeRaw === null ? 'loading win fee…' : 'marked at the Hyperliquid best bid/ask midpoint · PnL after haircut and 2% win fee';
-    $('f-pos-count').textContent = acct.positions.size ? String(acct.positions.size) : '';
+    $('f-pos-count').textContent = acct.positions.size ? `${acct.positions.size}${hs && (hs.uncovered.size || hs.stray) ? ' ⚠' : ''}` : '';
+    $('f-pos-count').className = `cnt ${hs && (hs.uncovered.size || hs.stray) ? 'bad' : ''}`;
     const unstaged = [...acct.positions.keys()].filter((id) => !staged.some((x) => x.kind === 'close' && x.positionId === id));
     $('f-close-all').hidden = full.tab !== 'positions';
     $('f-close-all').disabled = !unstaged.length;
@@ -1980,8 +2010,10 @@
     $('f-tab-positions').hidden = full.tab !== 'positions';
     $('f-tab-history').hidden = full.tab !== 'history';
     const note = $('f-tab-note');
-    note.textContent = full.tab === 'positions' ? posNote : 'closed and liquidated positions · PnL net of fee';
-    note.className = `small ftabnote ${full.tab === 'positions' && acct.streamLive === false ? 'warn' : ''}`;
+    note.textContent = full.tab === 'positions' ? 'Papertrade and Hyperliquid' : 'closed and liquidated Papertrade positions · PnL net of fee';
+    note.className = 'small ftabnote';
+    $('f-pt-note').textContent = `${acct.positions.size} open · ${posNote}`;
+    $('f-pt-note').className = `small ftabnote ${acct.streamLive === false ? 'warn' : ''}`;
   }
 
   // ---- House fund (full screen): from /state/house/current, whose `head` row is
@@ -2201,6 +2233,190 @@
     $('r-note').textContent = [n ? `${n} rolling` : keyActive() ? '' : 'needs an active session key', rollNote].filter(Boolean).join(' · ');
   }
 
+  // ---- Hyperliquid (full screen, read-only): open perp positions of an address and its subaccounts. Two calls
+  // per refresh to Hyperliquid's public info API: clearinghouseState (the master account) and subAccounts (each
+  // subaccount with its clearinghouseState). Nothing is signed. ----
+  const hl = { data: null, at: 0, error: '', loading: false };
+  async function hlInfo(body) {
+    const res = await fetch('https://api.hyperliquid.xyz/info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    if (!res.ok) throw new Error(res.status === 429 ? 'rate-limited by Hyperliquid; retrying' : `Hyperliquid answered ${res.status}`);
+    return res.json();
+  }
+  // The address to look up: the one typed in the bar, or else the connected wallet (same address on Hyperliquid).
+  const hlAddress = () => { const v = (settings.hl?.address ?? '').trim(); return /^0x[0-9a-fA-F]{40}$/.test(v) ? v.toLowerCase() : sk.master; };
+  async function loadHl() {
+    const user = hlAddress();
+    if (!user || hl.loading) { renderHl(); return; }
+    hl.loading = true;
+    try {
+      const [main, subs] = await Promise.all([hlInfo({ type: 'clearinghouseState', user }), hlInfo({ type: 'subAccounts', user })]);
+      if (!main?.marginSummary) throw new Error('unexpected answer from Hyperliquid');
+      const accounts = [{ name: 'Main', address: user, main: true, state: main },
+        ...(Array.isArray(subs) ? subs : []).map((x) => ({ name: x.name, address: String(x.subAccountUser).toLowerCase(), main: false, state: x.clearinghouseState }))];
+      // Open orders, per account (Hyperliquid has no "all subaccounts" form). An account with no money and no
+      // positions can't hold an order, so those are skipped to stay well inside the rate limit.
+      const live = accounts.filter((a) => a.main || hn(a.state?.marginSummary?.accountValue) > 0 || (a.state?.assetPositions ?? []).length);
+      const orders = await Promise.all(live.map((a) => hlInfo({ type: 'frontendOpenOrders', user: a.address })));
+      live.forEach((a, i) => { a.orders = Array.isArray(orders[i]) ? orders[i] : []; });
+      hl.data = { user, accounts };
+      hl.at = Date.now(); hl.error = '';
+    } catch (err) { hl.error = err.message; }
+    hl.loading = false;
+    renderHl();
+  }
+
+  const hn = (v) => Number(v ?? 0);
+  const hlPx = (v) => { const n = hn(v); return n.toLocaleString('en-US', { maximumFractionDigits: n >= 1000 ? 1 : n >= 1 ? 4 : 6 }); };
+  const hlSz = (v) => { const n = Math.abs(hn(v)); return n.toLocaleString('en-US', { maximumFractionDigits: n >= 100 ? 2 : n >= 1 ? 4 : 6 }); };
+  function renderHlNote() {
+    const age = hl.at ? Math.round((Date.now() - hl.at) / 1000) : null;
+    const who = hlAddress();
+    $('hl-note').textContent = !who ? 'connect your wallet, or type an address'
+      : hl.error ? `${hl.error}${age !== null ? ` · last good data ${age}s ago` : ''}`
+      : hl.data ? `main + ${hl.data.accounts.length - 1} subaccounts · updated ${age}s ago` : 'loading…';
+    $('hl-note').className = `small ${hl.error ? 'warn' : ''}`;
+  }
+
+  function renderHl() {
+    if (!full.on) return;
+    const input = $('hl-addr');
+    if (root.activeElement !== input) input.value = settings.hl?.address ?? '';
+    input.placeholder = sk.master ? `${sk.master} (connected wallet)` : 'master address (0x…)';
+    renderHlNote();
+    const d = hl.data;
+    if (!d) { $('hl-pos').innerHTML = `<tbody><tr><td class="fempty">${hl.error ? 'Hyperliquid data unavailable.' : 'Loading Hyperliquid positions…'}</td></tr></tbody>`; $('hl-accts').innerHTML = ''; return; }
+    const label = (a) => `${a.main ? 'Main' : a.name}<span class="sub">${short(a.address)}</span>`;
+    const rows = [], net = new Map();
+    for (const a of d.accounts) {
+      for (const ap of a.state?.assetPositions ?? []) {
+        const p = ap.position, szi = hn(p.szi);
+        if (!szi) continue;
+        const value = hn(p.positionValue), mark = value / Math.abs(szi), pnl = hn(p.unrealizedPnl), roe = hn(p.returnOnEquity) * 100;
+        const funding = -hn(p.cumFunding?.sinceOpen); // Hyperliquid reports funding paid; positive here = received
+        const e = net.get(p.coin) ?? { size: 0, notional: 0 };
+        e.size += szi; e.notional += Math.sign(szi) * value; net.set(p.coin, e);
+        rows.push({ value, html: `<tr>
+          <td>${label(a)}</td>
+          <td>${p.coin} <span class="tag ${szi > 0 ? 'LONG' : 'SHORT'}">${szi > 0 ? 'LONG' : 'SHORT'}</span></td>
+          <td>${p.leverage?.value ?? '–'}×<span class="sub">${p.leverage?.type === 'isolated' ? 'isolated' : 'cross'}</span></td>
+          <td>${hlSz(szi)}</td>
+          <td>${usd(value)}</td>
+          <td>${hlPx(p.entryPx)}</td>
+          <td>${hlPx(mark)}</td>
+          <td class="${tone(pnl)}">${signed(pnl)}<span class="sub">${roe >= 0 ? '+' : ''}${roe.toFixed(1)}% ROE</span></td>
+          <td>${p.liquidationPx ? hlPx(p.liquidationPx) : '–'}</td>
+          <td>${usd(hn(p.marginUsed))}</td>
+          <td class="${tone(funding)}">${signed(funding)}<span class="sub">since open</span></td></tr>` });
+      }
+    }
+    rows.sort((x, y) => y.value - x.value);
+    const head = '<thead><tr><th>Account</th><th>Market</th><th>Leverage</th><th>Size</th><th>Notional</th><th>Entry</th><th>Mark</th><th>PnL<span class="sub">ROE</span></th><th>Liq. price</th><th>Margin</th><th>Funding<span class="sub">received</span></th></tr></thead>';
+    const sign = (v) => (v > 0 ? '+' : v < 0 ? '−' : '');
+    const foot = [...net.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([coin, e], i) => `<tr>
+      <td>${i === 0 ? 'Net exposure' : ''}</td>
+      <td>${coin}${Math.abs(e.notional) < 0.5 ? ' <span class="small">flat</span>' : ` <span class="tag ${e.notional > 0 ? 'LONG' : 'SHORT'}">NET ${e.notional > 0 ? 'LONG' : 'SHORT'}</span>`}</td>
+      <td></td><td>${sign(e.size)}${hlSz(e.size)}</td><td>${sign(e.notional)}${usd(Math.abs(e.notional))}</td><td class="fnote" colspan="6">across all accounts</td></tr>`).join('');
+    $('hl-pos').innerHTML = rows.length ? `${head}<tbody>${rows.map((r) => r.html).join('')}</tbody>${foot ? `<tfoot>${foot}</tfoot>` : ''}`
+      : `<tbody><tr><td class="fempty">No open perp positions for ${short(d.user)} or its subaccounts.</td></tr></tbody>`;
+    $('hl-head-note').textContent = `read-only · ${rows.length ? `${rows.length} open position${rows.length > 1 ? 's' : ''}` : 'no open positions'} · main account and ${d.accounts.length - 1} subaccounts`;
+
+    renderHlOrders(d, label);
+
+    // Accounts: the ones with money or positions; empty subaccounts are only counted.
+    const shown = d.accounts.filter((a) => a.main || hn(a.state?.marginSummary?.accountValue) > 0 || (a.state?.assetPositions ?? []).length);
+    const empty = d.accounts.length - shown.length;
+    $('hl-accts').innerHTML = `<thead><tr><th>Account</th><th>Positions</th><th>Account value</th><th>Margin used</th><th>Notional</th><th>Withdrawable</th></tr></thead><tbody>${shown.map((a) => {
+      const m = a.state?.marginSummary ?? {};
+      return `<tr><td>${label(a)}</td><td>${(a.state?.assetPositions ?? []).length}</td><td>${usd(hn(m.accountValue))}</td><td>${usd(hn(m.totalMarginUsed))}</td><td>${usd(hn(m.totalNtlPos))}</td><td>${usd(hn(a.state?.withdrawable))}</td></tr>`;
+    }).join('')}</tbody>`;
+    $('hl-accts-note').textContent = empty ? `${empty} empty subaccount${empty > 1 ? 's' : ''} not shown` : '';
+  }
+
+  // ---- Liquidation hedges: each Hyperliquid order should sit at a Papertrade position's bust price, in the same
+  // direction, so that if Papertrade liquidates the position the order fills and the exposure comes straight back
+  // (delta neutral). Match: same coin, same direction (buy ↔ long, sell ↔ short), order price within ±$1 of the
+  // bust price. Closest pairs first, one order per position. ----
+  const HEDGE_TOL = 1; // dollars
+  function matchHedges(orders) {
+    const positions = [...acct.positions.values()].map((p) => {
+      const inst = instById(p.instrumentId);
+      if (!inst) return null;
+      const bust = Number(p.bustRaw) / inst.priceScale, entry = Number(p.entryRaw) / inst.priceScale;
+      return { p, coin: inst.symbol, inst, bust, size: (p.margin * p.leverage) / entry };
+    }).filter(Boolean);
+    const pairs = [];
+    orders.forEach((o, oi) => positions.forEach((q, qi) => {
+      const px = o.price, d = Math.abs(px - q.bust);
+      if (o.coin === q.coin && o.isBuy === q.p.isLong && d <= HEDGE_TOL) pairs.push({ oi, qi, d });
+    }));
+    pairs.sort((a, b) => a.d - b.d);
+    const byOrder = new Map(), takenPos = new Set();
+    for (const x of pairs) if (!byOrder.has(x.oi) && !takenPos.has(x.qi)) { byOrder.set(x.oi, { q: positions[x.qi], d: x.d }); takenPos.add(x.qi); }
+    return { byOrder, uncovered: positions.filter((_, qi) => !takenPos.has(qi)), positions };
+  }
+
+  // { uncovered: Set of position ids, stray: unmatched order count, total, covered }, or null when Hyperliquid's
+  // orders haven't loaded (or are stale), so nothing claims "hedged" without data.
+  function hedgeStatus() {
+    if (!hl.data || !hl.orderList || hl.error || Date.now() - hl.at > 60_000) return null;
+    const { byOrder, uncovered, positions } = matchHedges(hl.orderList);
+    return { uncovered: new Set(uncovered.map((q) => q.p.id)), stray: hl.orderList.length - byOrder.size, total: positions.length, covered: positions.length - uncovered.length };
+  }
+  function renderHedgeBadge(hs) {
+    const b = $('f-hedge');
+    b.hidden = !full.on;
+    if (!hs) {
+      b.textContent = hl.error ? 'hedges: Hyperliquid unavailable' : 'hedges: checking…';
+      b.className = 'fhedge unknown';
+      return;
+    }
+    const problems = [hs.uncovered.size ? `${hs.uncovered.size} unhedged` : '', hs.stray ? `${hs.stray} stray HL order${hs.stray > 1 ? 's' : ''}` : ''].filter(Boolean);
+    b.textContent = problems.length ? `⚠ ${problems.join(' · ')}` : hs.total ? `✓ ${hs.covered} of ${hs.total} hedged` : '✓ nothing to hedge';
+    b.className = `fhedge ${problems.length ? 'bad' : 'ok'}`;
+  }
+
+  function renderHlOrders(d, label) {
+    const orders = [];
+    for (const a of d.accounts) for (const o of a.orders ?? []) {
+      const price = hn(o.isTrigger ? o.triggerPx : o.limitPx);
+      orders.push({ a, o, coin: o.coin, isBuy: o.side === 'B', price, size: hn(o.sz) });
+    }
+    if (!d.accounts.some((a) => a.orders)) { $('hl-orders').innerHTML = '<tbody><tr><td class="fempty">Loading open orders…</td></tr></tbody>'; return; }
+    hl.orderList = orders; // hedge status (header badge, Papertrade rows) re-matches these every second
+    const { byOrder, uncovered, positions } = matchHedges(orders);
+    const rows = orders.map((x, i) => {
+      const m = byOrder.get(i), o = x.o;
+      const type = `${o.orderType ?? 'Limit'}${o.tif ? ` · ${o.tif}` : ''}${o.reduceOnly ? ' · reduce-only' : ''}`;
+      let match;
+      if (m) {
+        const ratio = m.q.size > 0 ? x.size / m.q.size : 0, sameSize = Math.abs(ratio - 1) <= 0.01;
+        match = `<td class="hmatch"><span class="ok">✓ #${m.q.p.id} ${m.q.p.isLong ? 'LONG' : 'SHORT'}</span>`
+          + `<span class="sub">bust ${px(m.q.bust, m.q.inst)} · Δ ${m.d.toFixed(1)} · <span class="${sameSize ? 'ok' : 'warn'}">size ${sameSize ? 'matches' : `${(ratio * 100).toFixed(0)}% of ${hlSz(m.q.size)}`}</span></span></td>`;
+      } else {
+        // The nearest bust in the same coin and direction, to show how far off it is.
+        const near = positions.filter((q) => q.coin === x.coin && q.p.isLong === x.isBuy).sort((a, b) => Math.abs(a.bust - x.price) - Math.abs(b.bust - x.price))[0];
+        match = `<td class="hmatch"><span class="warn">no matching position</span><span class="sub">${near ? `nearest #${near.p.id} bust ${px(near.bust, near.inst)} (Δ ${Math.abs(near.bust - x.price).toFixed(1)})` : `no Papertrade ${x.coin} ${x.isBuy ? 'long' : 'short'}`}</span></td>`;
+      }
+      return { m: !!m, html: `<tr class="${m ? '' : 'stray'}">
+        <td>${label(x.a)}</td>
+        <td>${x.coin} <span class="tag ${x.isBuy ? 'LONG' : 'SHORT'}">${x.isBuy ? 'BUY' : 'SELL'}</span></td>
+        <td>${hlPx(x.price)}${o.isTrigger ? `<span class="sub">trigger · limit ${hlPx(o.limitPx)}</span>` : ''}</td>
+        <td>${hlSz(x.size)}</td>
+        <td>${usd(x.size * x.price)}</td>
+        <td class="htype">${type}</td>
+        ${match}</tr>` };
+    });
+    $('hl-orders').innerHTML = rows.length
+      ? `<thead><tr><th>Account</th><th>Market</th><th>Price</th><th>Size</th><th>Notional</th><th>Type</th><th>Papertrade match<span class="sub">same side, at its bust ±$${HEDGE_TOL}</span></th></tr></thead><tbody>${rows.map((r) => r.html).join('')}</tbody>`
+      : '<tbody><tr><td class="fempty">No open orders on Hyperliquid.</td></tr></tbody>';
+    const covered = positions.length - uncovered.length;
+    const note = $('hl-orders-note');
+    note.textContent = !positions.length ? `${rows.length} order${rows.length === 1 ? '' : 's'} · no open Papertrade positions to cover`
+      : uncovered.length ? `${covered} of ${positions.length} Papertrade positions covered · no order at the bust of ${uncovered.map((q) => `#${q.p.id} ${q.coin} ${q.p.isLong ? 'long' : 'short'} (${px(q.bust, q.inst)})`).join(', ')}`
+      : `all ${positions.length} Papertrade positions covered`;
+    note.className = `small ftabnote ${positions.length && uncovered.length ? 'warn' : positions.length ? 'ok' : ''}`;
+  }
+
   async function enterFull() {
     full.on = true;
     host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;';
@@ -2217,6 +2433,9 @@
     const rs = settings.roll;
     if (rs) { $('r-distance').value = rs.distance ?? '5'; $('r-pending').value = rs.pending ?? '20'; $('r-oi').value = rs.oi ?? '2'; }
     setInterval(tickRolls, 1_000);
+    loadHl(); // the Hyperliquid section, and the hedge badge in the top bar (shown on every tab)
+    setInterval(() => { if (!document.hidden) loadHl(); }, 10_000);
+    setInterval(() => { if (full.tab === 'positions') renderHlNote(); }, 1_000);
     document.documentElement.style.overflow = 'hidden'; // the dashboard covers the page; don't scroll it underneath
     watchBbo();
     loadWinFee();
@@ -2233,11 +2452,16 @@
     location.hash = '';
     location.reload();
   });
+  $('f-hedge').addEventListener('click', () => {
+    if (full.tab !== 'positions') { full.tab = 'positions'; try { sessionStorage.setItem('pt-full-tab', 'positions'); } catch {} loadHl(); renderFull(); }
+    setTimeout(() => $('hl-orders').scrollIntoView({ block: 'center' }), 30); // once the tab is shown
+  });
   $('f-tabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-ftab]');
     if (!b) return;
     full.tab = b.dataset.ftab;
     try { sessionStorage.setItem('pt-full-tab', full.tab); } catch { /* not remembered */ }
+    if (full.tab === 'positions') loadHl();
     renderFull();
   });
   $('f-prev').addEventListener('click', () => { full.page = Math.max(0, full.page - 1); renderFull(); });
@@ -2254,6 +2478,17 @@
     renderOrder();
     renderFull();
   });
+  $('hl-addr').addEventListener('change', () => {
+    const v = $('hl-addr').value.trim();
+    const ok = v === '' || /^0x[0-9a-fA-F]{40}$/.test(v);
+    $('hl-addr').classList.toggle('bad', !ok);
+    if (!ok) return;
+    settings.hl = { address: v };
+    storage.set(settings);
+    hl.data = null; hl.at = 0; hl.error = ''; hl.orderList = null;
+    loadHl();
+  });
+  for (const ev of ['keydown', 'keyup', 'keypress']) $('hl-addr').addEventListener(ev, (e) => { e.stopPropagation(); if (ev === 'keydown' && e.key === 'Enter') $('hl-addr').blur(); });
   for (const id of ['r-distance', 'r-pending', 'r-oi']) {
     $(id).addEventListener('input', applyRollSettings);
     for (const ev of ['keydown', 'keyup', 'keypress']) $(id).addEventListener(ev, (e) => e.stopPropagation());

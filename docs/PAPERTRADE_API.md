@@ -902,6 +902,20 @@ export async function submit(body: unknown) {
 
 ---
 
+## 13b. Hyperliquid positions (used by the extension's Hyperliquid tab)
+
+Hyperliquid's public info API, `POST https://api.hyperliquid.xyz/info`, CORS-open, no signature:
+- `{"type":"clearinghouseState","user":addr}` → `{marginSummary{accountValue,totalNtlPos,totalRawUsd,totalMarginUsed},
+  crossMarginSummary, withdrawable, assetPositions[{type, position{coin, szi (signed size), leverage{type,value},
+  entryPx, positionValue, unrealizedPnl, returnOnEquity, liquidationPx, marginUsed, maxLeverage,
+  cumFunding{allTime,sinceOpen,sinceChange}}}], time}`. The mark is `positionValue ÷ |szi|`. `cumFunding` is
+  funding **paid** (negative = received).
+- `{"type":"subAccounts","user":master}` → `[{name, subAccountUser, master, clearinghouseState, spotState}]`, so one
+  call covers every subaccount's positions. A Papertrade wallet is the same address on Hyperliquid.
+- `{"type":"frontendOpenOrders","user":addr}` → `[{coin, side ("B" buy / "A" sell), limitPx, sz, origSz, oid, timestamp,
+  orderType ("Limit", "Stop Market", …), tif, reduceOnly, isTrigger, triggerPx, triggerCondition, isPositionTpsl,
+  children, cloid}]`. Per account: query each subaccount's address separately.
+
 ## 14. Reference implementation in this repo
 
 The repo is the Paperbox Chrome extension; everything below runs in the browser.
