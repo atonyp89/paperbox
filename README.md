@@ -9,19 +9,22 @@ your wallet (e.g. Rabby with a Ledger) authorizes with one signature, and **open
 In full screen, a **PAPER staking** strip shows PAPER's total supply and lets you stake PAPER and claim
 rewards (see [PAPER staking](#paper-staking)).
 
-It shows the same numbers as the **Status** tab on Papertrade's trade page, without having to switch tabs, , on
-one row (e.g. `Congestion LOW ~3s to clear · 4 pending tx ↑3`). The panel widens only as far as that row needs
-(a long queue makes it a little wider):
+It shows the same numbers as the **Status** tab on Papertrade's trade page, without having to switch tabs, in its
+first two lines: `Paperbox • Congestion LOW` in the header, then `~3s to clear · 4 pending tx ↑3`. The panel has a
+fixed width with room for the widest case (MEDIUM, up to 10,000 pending tx), so it doesn't jump as the numbers
+change:
 
 | | Meaning |
 |---|---|
 | **Congestion** | LOW / MEDIUM / HIGH: how many blocks the queued + submitted orders need to clear (≤ 1, ≤ 5, more). Hover for the blocks needed and avg tx per recent block. |
-| **Time to clear** | About one second per block needed (at least ~3s while anything is pending) |
+| **Time to clear** | About one second per block needed (at least ~3s while anything is pending); minutes past 2m, hours past 100m |
 | **Pending tx** | Orders waiting for the relayer right now (hover for submitted vs. waiting for a batch) |
 | **↑ / ↓** | The change in pending over the last minute, shown when it moves. ↑ in amber means the queue is growing. |
 
-Minimize it with **–** to a pill that shows the same congestion row, at the same width, so nothing jumps. Click
-the pill to expand it. Drag either one anywhere. Position and collapsed state are remembered.
+Minimize the **Paperbox** panel with **–**: it keeps just those two lines, at the same width, so
+nothing jumps. Expand it with **+** or a click on the header. Drag it anywhere by the header. Position and minimized
+state are remembered. When the queue feed is down, the row says *connecting…* or *unavailable* (hover for how old
+the data is).
 
 If the data stops arriving it says so ("stale, data 7s old") rather than showing old numbers, and it
 reconnects on its own. While the tab is in the background for more than 30s it disconnects, and it

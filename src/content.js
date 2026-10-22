@@ -155,17 +155,17 @@
   *, *::before, *::after { box-sizing: border-box !important; }
   [hidden] { display: none !important; }
   .wrap { font: 12px/1.4 var(--o-font); color: var(--o-ink); -webkit-font-smoothing: antialiased; }
-  .pill, .panel { background: var(--o-panel); border: 1px solid var(--o-border); border-radius: var(--o-radius);
+  .panel { background: var(--o-panel); border: 1px solid var(--o-border); border-radius: var(--o-radius);
     box-shadow: var(--o-shadow);  }
-  .pill { display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; cursor: grab; user-select: none;
-    font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .pill:active { cursor: grabbing; }
-  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--o-faint); flex: none; }
   .panel { width: 304px; max-width: calc(100vw - 32px); max-height: calc(100vh - 16px); overflow: hidden auto; }
   .head { position: sticky; top: 0; z-index: 1; background: var(--o-panel); }
-  .head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px; border-bottom: 1px solid var(--o-border); cursor: grab; user-select: none; }
+  .head { display: flex; align-items: center; gap: 8px; padding: 8px 10px 4px 12px; cursor: grab; user-select: none; }
   .head:active { cursor: grabbing; }
-  .title { font-weight: 600; font-size: 12px; flex: 1; }
+  .title { font-weight: 600; font-size: 12px; flex: none; }
+  /* Congestion sits in the header beside the name: "Paperbox • Congestion LOW". */
+  .hcong { flex: 1; display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; }
+  .hcong .hsep { color: var(--o-faint); }
+  .hcong .qtxt { color: var(--o-muted); font-size: 11px; }
   .btn { all: unset; cursor: pointer; color: var(--o-muted); padding: 0 4px; font-size: 14px; line-height: 1; }
   .btn:hover { color: var(--o-ink); }
   .lbl { display: block; color: var(--o-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
@@ -174,17 +174,14 @@
   .LOW { color: var(--o-pos); background: color-mix(in srgb, var(--o-pos) 14%, transparent); }
   .MEDIUM { color: var(--o-warn); background: color-mix(in srgb, var(--o-warn) 14%, transparent); }
   .HIGH { color: var(--o-neg); background: color-mix(in srgb, var(--o-neg) 14%, transparent); }
-  .dot.LOW { background: var(--o-pos); } .dot.MEDIUM { background: var(--o-warn); } .dot.HIGH { background: var(--o-neg); }
   /* Queue congestion on one row: level, time to clear, pending tx, a 5-minute chart and the 1-minute change. */
-  .qsum { display: flex; align-items: center; gap: 6px; padding: 7px 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .qsum .qlbl { flex: none; }
+  .qsum { display: flex; align-items: center; gap: 6px; padding: 0 12px 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .qsum .qtxt { color: var(--o-muted); font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
   .qsum .qtxt b { color: var(--o-ink); font-weight: 600; }
   .qsum .qtrend { color: var(--o-muted); font-size: 11px; margin-left: auto; }
   .qsum .qtrend.warn { color: var(--o-warn); }
-  /* Minimized: the pill carries the same row. */
-  .pill .qsum { padding: 0; flex: 1; min-width: 0; }
-  .pill { max-width: calc(100vw - 32px); }
+  /* Minimized: just the header and the congestion row. */
+  .panel.min > :not(.head):not(.qsum) { display: none !important; }
   .foot { padding: 6px 12px 8px; color: var(--o-muted); font-size: 11px; display: flex; justify-content: space-between; gap: 8px; }
   .warn { color: var(--o-warn); }
   .ok { color: var(--o-pos); }
@@ -477,18 +474,14 @@
   </div>
 </div>
 <div class="wrap">
-  <div class="pill" id="pill" title="Papertrade queue status: click to expand, drag to move">
-    <span class="dot" id="pill-dot"></span><span id="pill-text">Connecting…</span>
-  </div>
-  <div class="panel" id="panel" hidden>
+  <div class="panel" id="panel">
     <div class="head" id="head">
-      <span class="dot" id="dot"></span>
-      <span class="title">Papertrade queue</span>
+      <span class="title">Paperbox</span><span class="hcong" id="hcong"><span class="hsep">•</span><span class="qtxt">Congestion</span><span id="q-level">--</span></span>
       <button class="btn" id="fullscreen" title="Open full screen in a new tab" aria-label="Open full screen in a new tab">⤢</button>
-      <button class="btn" id="collapse" title="Collapse" aria-label="Collapse">–</button>
+      <button class="btn" id="collapse" title="Minimize" aria-label="Minimize">–</button>
     </div>
     <div class="qsum" id="qsum">
-      <span class="qtxt qlbl">Congestion</span><span id="q-level">--</span><span class="qtxt"><b id="q-clear">--</b> to clear · <b id="q-pending">--</b> pending tx</span>
+      <span class="qtxt"><b id="q-clear">--</b> to clear · <b id="q-pending">--</b> pending tx</span>
       <span class="qtrend" id="q-trend"></span>
     </div>
     <div class="session" id="session">
@@ -544,13 +537,12 @@
   let snapshot = null;
   let streamState = 'connecting';
 
-  const fmtClear = (s) => (s === null ? '--' : s === 0 ? '0s' : s < 120 ? `~${s}s` : `~${(s / 60).toFixed(1)}m`);
+  const fmtClear = (s) => (s === null ? '--' : s === 0 ? '0s' : s < 120 ? `~${s}s` : s < 6000 ? `~${(s / 60).toFixed(1)}m` : `~${(s / 3600).toFixed(1)}h`);
   const num = (n) => (n === null ? '--' : n.toLocaleString('en-US'));
 
   function render() {
     const st = computeStatus(snapshot);
     const level = st.congestion;
-    for (const id of ['dot', 'pill-dot']) $(id).className = `dot ${level ?? ''}`;
     $('q-level').innerHTML = level ? `<span class="level ${level}">${level}</span>` : '--';
     $('q-level').title = st.neededBlocks === null ? '' : `Queue congestion: queued + submitted gas needs ${st.neededBlocks} block(s)` +
       (st.avgTx === null ? '' : ` · ${st.avgTx.toFixed(1)} tx per recent block`);
@@ -560,8 +552,6 @@
     $('block').textContent = st.block ? `#${num(st.block)}` : '';
 
     const age = st.ts ? Math.round((Date.now() - st.ts) / 1000) : null;
-    $('pill-dot').hidden = $('pill-text').hidden = st.live; // live: the pill shows the congestion row instead
-    $('qsum').hidden = !st.live && settings.collapsed;
     if (st.live) {
       $('state').textContent = 'live';
       $('state').className = '';
@@ -569,31 +559,46 @@
       const why = streamState === 'live' ? 'stale' : streamState;
       $('state').textContent = age === null ? `${why}…` : `${why}, data ${age < 120 ? `${age}s` : `${Math.round(age / 60)}m`} old`;
       $('state').className = 'warn';
-      $('pill-text').textContent = age === null ? 'Connecting…' : 'Queue status unavailable';
     }
     renderTrend();
+    // Not live: the row says why where the trend goes, so it reads right minimized too (the footer is hidden then).
+    if (!st.live) { $('q-trend').textContent = age === null ? 'connecting…' : 'unavailable'; $('q-trend').title = $('state').textContent; $('q-trend').className = 'qtrend warn'; }
     fitPanel();
   }
 
-  // The panel and the minimized pill share one width, so minimizing or expanding doesn't make it jump: 304px
-  // unless the congestion row needs more (a long queue: "~3.2m to clear · 1,763 pending tx ↑1.7k"), then just
-  // enough to keep the row whole. It only narrows again once the row needs clearly less, so it doesn't twitch as
-  // numbers change.
+  // The panel has one fixed width, minimized or not, so nothing jumps: not when minimizing or expanding,
+  // and not as the numbers change. It's sized once for the widest the header and row realistically get
+  // ("Paperbox • Congestion MEDIUM"; "~99.9m to clear · 10,000 pending tx ↑9.9k"), measured on hidden copies in
+  // the overlay's own font, and never narrower than 304px.
   const PANEL_MIN_W = 304;
-  let rowW = PANEL_MIN_W;
+  let rowW = null;
   function fitPanel() {
-    const q = $('qsum'), box = q.parentElement;
-    if (full?.on || q.hidden || box.hidden || !host.isConnected) return;
-    const kids = [...q.children].filter((c) => !c.hidden && c.textContent);
-    const cs = getComputedStyle(q), bs = getComputedStyle(box), gap = parseFloat(cs.columnGap) || 0;
-    // The row's padding sits on the row in the panel and on the pill around it; count whichever carries it.
-    const pad = (st) => parseFloat(st.paddingLeft) + parseFloat(st.paddingRight);
-    const need = kids.reduce((w, c) => w + c.scrollWidth, 0) + gap * (kids.length - 1) + pad(cs) +
-      (box === $('pill') ? pad(bs) : 0) + 2; // + the 1px border each side
-    const want = Math.max(PANEL_MIN_W, Math.ceil(need / 4) * 4);
-    if (want > rowW || want < rowW - 16) rowW = want;
-    $('panel').style.width = $('pill').style.width = `${rowW}px`;
+    if (full?.on || !host.isConnected) return;
+    if (rowW === null) {
+      // Measure the header and the row filled with their widest content, on hidden copies; the wider wins.
+      const copy = (el, fill) => {
+        const c = el.cloneNode(true);
+        c.removeAttribute('id');
+        c.hidden = false;
+        for (const e of c.querySelectorAll('[id]')) e.removeAttribute('id');
+        fill(c);
+        c.style.cssText = 'position: absolute; visibility: hidden; width: max-content; left: -9999px; top: 0;';
+        $('panel').parentElement.append(c);
+        const w = c.getBoundingClientRect().width;
+        c.remove();
+        return w;
+      };
+      const head = copy($('head'), (c) => { c.querySelector('.hcong').lastElementChild.innerHTML = '<span class="level MEDIUM">MEDIUM</span>'; });
+      const row = copy($('qsum'), (c) => {
+        c.firstElementChild.innerHTML = '<b>~99.9m</b> to clear · <b>10,000</b> pending tx';
+        c.lastElementChild.textContent = '↑9.9k';
+      });
+      rowW = Math.max(PANEL_MIN_W, Math.ceil(Math.max(head + 8, row)) + 2); // + some air before the buttons, + the 1px border each side
+    }
+    $('panel').style.width = `${rowW}px`;
   }
+  // Web fonts can arrive after the first measurement; measure again once they have.
+  document.fonts?.ready.then(() => { rowW = null; fitPanel(); });
 
   function renderTrend() {
     const now = Date.now();
@@ -604,7 +609,7 @@
     const ref = history.find((h) => now - h.t <= 60_000) ?? history[0];
     const diff = nowP - ref.pending;
     const steady = Math.abs(diff) < Math.max(3, ref.pending * 0.05);
-    const k = (n) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`);
+    const k = (n) => (n < 1000 ? String(n) : n < 9950 ? `${(n / 1000).toFixed(1)}k` : `${Math.round(n / 1000)}k`);
     $('q-trend').textContent = steady ? '' : diff > 0 ? `↑${k(diff)}` : `↓${k(-diff)}`;
     $('q-trend').title = steady ? '' : `${diff > 0 ? 'Up' : 'Down'} ${num(Math.abs(diff))} pending in the last minute`;
     $('q-trend').className = `qtrend ${!steady && diff > 0 ? 'warn' : ''}`; // a growing queue is the warning sign
@@ -612,16 +617,16 @@
 
   function applyLayout() {
     if (full?.on) return; // full screen: the dashboard fills the tab; nothing to position
-    $('pill').hidden = !settings.collapsed;
-    $('panel').hidden = settings.collapsed;
-    // One congestion row, shown in whichever is visible: the minimized pill or the panel under its header.
-    if (settings.collapsed) { if ($('qsum').parentElement !== $('pill')) $('pill').append($('qsum')); }
-    else if ($('qsum').parentElement !== $('panel')) $('head').after($('qsum'));
+    // Minimized: the panel keeps its header and the congestion row; – minimizes, + (or a click on the header)
+    // expands.
+    $('panel').classList.toggle('min', settings.collapsed);
+    $('collapse').textContent = settings.collapsed ? '+' : '–';
+    $('collapse').title = $('collapse').ariaLabel = settings.collapsed ? 'Expand' : 'Minimize';
     host.style.left = `${settings.left}px`;
     host.style.bottom = `${settings.bottom}px`;
     host.style.top = 'auto';
     host.style.right = 'auto';
-    // Keep it on screen (e.g. after expanding a pill parked near an edge, or the window shrinking).
+    // Keep it on screen (e.g. after expanding it while parked near an edge, or the window shrinking).
     if (!host.isConnected) return;
     const r = host.getBoundingClientRect();
     const left = Math.max(0, Math.min(settings.left, window.innerWidth - r.width - 8));
@@ -635,7 +640,7 @@
   // handle) on screen.
   new ResizeObserver(() => applyLayout()).observe(host);
 
-  // Drag by the pill or the panel header; a click without movement toggles.
+  // Drag by the header; a click on it without movement expands a minimized panel.
   function draggable(handle, onClick) {
     handle.addEventListener('pointerdown', (e) => {
       if (e.button !== 0 || e.target.closest('.btn')) return;
@@ -660,9 +665,9 @@
       handle.addEventListener('pointerup', up);
     });
   }
-  draggable($('pill'), () => { settings.collapsed = false; applyLayout(); render(); storage.set(settings); });
-  draggable($('head'));
-  $('collapse').addEventListener('click', () => { settings.collapsed = true; applyLayout(); render(); storage.set(settings); });
+  const setMinimized = (on) => { settings.collapsed = on; applyLayout(); render(); storage.set(settings); };
+  draggable($('head'), () => { if (settings.collapsed) setMinimized(false); });
+  $('collapse').addEventListener('click', () => setMinimized(!settings.collapsed));
 
   // ---- Session key: created by the background worker, authorized by your wallet (Rabby / Ledger) ----
   const API = 'https://exchange.papertrade.xyz';
@@ -2675,8 +2680,7 @@
     full.on = true;
     host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;';
     $('full').hidden = false;
-    $('pill').hidden = true;
-    $('panel').hidden = false;
+    $('panel').classList.remove('min'); // full screen always shows the whole sidebar
     $('f-aside').appendChild($('panel')); // the same status / session / order builder, now as the sidebar
     $('f-session-slot').appendChild($('session')); // the session key goes up into the header
     loadPaperInfo(); // the PAPER staking strip (full screen only)
