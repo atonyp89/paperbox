@@ -9,18 +9,19 @@ your wallet (e.g. Rabby with a Ledger) authorizes with one signature, and **open
 In full screen, a **PAPER staking** strip shows PAPER's total supply and lets you stake PAPER and claim
 rewards (see [PAPER staking](#paper-staking)).
 
-It shows the same numbers as the **Status** tab on Papertrade's trade page, without having to switch tabs:
+It shows the same numbers as the **Status** tab on Papertrade's trade page, without having to switch tabs, , on
+one row (e.g. `Congestion LOW ~3s to clear · 4 pending tx ↑3`). The panel widens only as far as that row needs
+(a long queue makes it a little wider):
 
 | | Meaning |
 |---|---|
-| **Congestion** | LOW / MEDIUM / HIGH: how many blocks the queued + submitted orders need to clear (≤ 1, ≤ 5, more) |
+| **Congestion** | LOW / MEDIUM / HIGH: how many blocks the queued + submitted orders need to clear (≤ 1, ≤ 5, more). Hover for the blocks needed and avg tx per recent block. |
 | **Time to clear** | About one second per block needed (at least ~3s while anything is pending) |
 | **Pending tx** | Orders waiting for the relayer right now (hover for submitted vs. waiting for a batch) |
-| **Avg tx / block** | Transactions per recent HyperEVM block |
-| **Sparkline** | Pending orders over the last 5 minutes, with the change over the last minute. ↑ in amber means the queue is growing. |
+| **↑ / ↓** | The change in pending over the last minute, shown when it moves. ↑ in amber means the queue is growing. |
 
-Collapse it to a one-line pill (e.g. `● HIGH · 1,205 pending · ~2.2m`) with **–**. Click the pill to expand
-it. Drag either one anywhere. Position and collapsed state are remembered.
+Minimize it with **–** to a pill that shows the same congestion row, at the same width, so nothing jumps. Click
+the pill to expand it. Drag either one anywhere. Position and collapsed state are remembered.
 
 If the data stops arriving it says so ("stale, data 7s old") rather than showing old numbers, and it
 reconnects on its own. While the tab is in the background for more than 30s it disconnects, and it

@@ -14,7 +14,7 @@
   const STALE_MS = 5_000; // the web app treats a snapshot older than this as unavailable
   const SOCKET_SILENT_MS = 45_000; // server pings every 20s
   const DATA_SILENT_MS = 15_000; // pressure publishes several times a second
-  const HISTORY_MS = 5 * 60_000; // sparkline window
+  const HISTORY_MS = 2 * 60_000; // pending-tx history kept for the 1-minute trend
   const HIDDEN_DISCONNECT_MS = 30_000; // close the socket when the tab has been in the background this long
   const STORE_KEY = 'papertradeStatusOverlay';
 
@@ -168,8 +168,6 @@
   .title { font-weight: 600; font-size: 12px; flex: 1; }
   .btn { all: unset; cursor: pointer; color: var(--o-muted); padding: 0 4px; font-size: 14px; line-height: 1; }
   .btn:hover { color: var(--o-ink); }
-  .grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1px; background: var(--o-border); }
-  .cell { background: var(--o-panel); padding: 8px 12px; }
   .lbl { display: block; color: var(--o-muted); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; }
   .val { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; }
   .level { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .05em; padding: 1px 7px; border-radius: 4px; }
@@ -177,10 +175,16 @@
   .MEDIUM { color: var(--o-warn); background: color-mix(in srgb, var(--o-warn) 14%, transparent); }
   .HIGH { color: var(--o-neg); background: color-mix(in srgb, var(--o-neg) 14%, transparent); }
   .dot.LOW { background: var(--o-pos); } .dot.MEDIUM { background: var(--o-warn); } .dot.HIGH { background: var(--o-neg); }
-  .spark { padding: 8px 12px 4px; border-top: 1px solid var(--o-border); }
-  .spark svg { display: block; width: 100%; height: 40px; }
-  .spark .area { fill: var(--o-chart); opacity: .16; } .spark .line { fill: none; stroke: var(--o-chart); stroke-width: 1.5; }
-  .trend { display: flex; justify-content: space-between; color: var(--o-muted); font-size: 11px; }
+  /* Queue congestion on one row: level, time to clear, pending tx, a 5-minute chart and the 1-minute change. */
+  .qsum { display: flex; align-items: center; gap: 6px; padding: 7px 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .qsum .qlbl { flex: none; }
+  .qsum .qtxt { color: var(--o-muted); font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .qsum .qtxt b { color: var(--o-ink); font-weight: 600; }
+  .qsum .qtrend { color: var(--o-muted); font-size: 11px; margin-left: auto; }
+  .qsum .qtrend.warn { color: var(--o-warn); }
+  /* Minimized: the pill carries the same row. */
+  .pill .qsum { padding: 0; flex: 1; min-width: 0; }
+  .pill { max-width: calc(100vw - 32px); }
   .foot { padding: 6px 12px 8px; color: var(--o-muted); font-size: 11px; display: flex; justify-content: space-between; gap: 8px; }
   .warn { color: var(--o-warn); }
   .ok { color: var(--o-pos); }
@@ -267,7 +271,7 @@
   .ftable tr.stray td { background: color-mix(in srgb, var(--o-neg) 8%, transparent); }
   /* Full screen: the header already shows the queue status, so the sidebar drops its status box; the session
      key (status, expiry, Replace / Remove, and its messages) moves up into the header. */
-  .faside #panel > .grid, .faside #panel > .spark { display: none !important; }
+  .faside #panel > .qsum { display: none !important; }
   .fsession { display: flex; align-items: center; padding-left: 16px; border-left: 1px solid var(--o-border); min-width: 0; }
   .fsession .session { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding: 0; border: 0; }
   .fsession .session .row { justify-content: flex-start; gap: 6px; }
@@ -483,15 +487,9 @@
       <button class="btn" id="fullscreen" title="Open full screen in a new tab" aria-label="Open full screen in a new tab">⤢</button>
       <button class="btn" id="collapse" title="Collapse" aria-label="Collapse">–</button>
     </div>
-    <div class="grid">
-      <div class="cell"><span class="lbl">Congestion</span><span class="val" id="congestion">--</span></div>
-      <div class="cell"><span class="lbl">Time to clear</span><span class="val" id="clear">--</span></div>
-      <div class="cell"><span class="lbl">Pending tx</span><span class="val" id="pending">--</span></div>
-      <div class="cell"><span class="lbl">Avg tx / block</span><span class="val" id="avg">--</span></div>
-    </div>
-    <div class="spark">
-      <svg viewBox="0 0 248 40" preserveAspectRatio="none" aria-label="Pending transactions over the last 5 minutes" id="spark"></svg>
-      <div class="trend"><span>pending · last 5 min</span><span id="trend"></span></div>
+    <div class="qsum" id="qsum">
+      <span class="qtxt qlbl">Congestion</span><span id="q-level">--</span><span class="qtxt"><b id="q-clear">--</b> to clear · <b id="q-pending">--</b> pending tx</span>
+      <span class="qtrend" id="q-trend"></span>
     </div>
     <div class="session" id="session">
       <div class="row"><span class="lbl">Session key</span><span id="sk-status" class="small">checking…</span></div>
@@ -553,55 +551,72 @@
     const st = computeStatus(snapshot);
     const level = st.congestion;
     for (const id of ['dot', 'pill-dot']) $(id).className = `dot ${level ?? ''}`;
-    $('congestion').innerHTML = level ? `<span class="level ${level}">${level}</span>` : '--';
-    $('congestion').title = st.neededBlocks === null ? '' : `Queued + submitted gas needs ${st.neededBlocks} block(s)`;
-    $('clear').textContent = fmtClear(st.clearS);
-    $('pending').textContent = st.pending === null ? '--' : num(st.pending);
-    $('pending').title = st.queued === null ? '' : `${st.submitted} submitted to chain, ${st.queued} waiting for a batch`;
-    $('avg').textContent = st.avgTx === null ? '--' : st.avgTx.toFixed(1);
+    $('q-level').innerHTML = level ? `<span class="level ${level}">${level}</span>` : '--';
+    $('q-level').title = st.neededBlocks === null ? '' : `Queue congestion: queued + submitted gas needs ${st.neededBlocks} block(s)` +
+      (st.avgTx === null ? '' : ` · ${st.avgTx.toFixed(1)} tx per recent block`);
+    $('q-clear').textContent = fmtClear(st.clearS);
+    $('q-pending').textContent = st.pending === null ? '--' : num(st.pending);
+    $('q-pending').title = st.queued === null ? '' : `${st.submitted} submitted to chain, ${st.queued} waiting for a batch`;
     $('block').textContent = st.block ? `#${num(st.block)}` : '';
 
     const age = st.ts ? Math.round((Date.now() - st.ts) / 1000) : null;
+    $('pill-dot').hidden = $('pill-text').hidden = st.live; // live: the pill shows the congestion row instead
+    $('qsum').hidden = !st.live && settings.collapsed;
     if (st.live) {
       $('state').textContent = 'live';
       $('state').className = '';
-      $('pill-text').textContent = `${level} · ${num(st.pending)} pending · ${fmtClear(st.clearS)}`;
     } else {
       const why = streamState === 'live' ? 'stale' : streamState;
       $('state').textContent = age === null ? `${why}…` : `${why}, data ${age < 120 ? `${age}s` : `${Math.round(age / 60)}m`} old`;
       $('state').className = 'warn';
       $('pill-text').textContent = age === null ? 'Connecting…' : 'Queue status unavailable';
     }
-    renderSpark();
+    renderTrend();
+    fitPanel();
   }
 
-  function renderSpark() {
+  // The panel and the minimized pill share one width, so minimizing or expanding doesn't make it jump: 304px
+  // unless the congestion row needs more (a long queue: "~3.2m to clear · 1,763 pending tx ↑1.7k"), then just
+  // enough to keep the row whole. It only narrows again once the row needs clearly less, so it doesn't twitch as
+  // numbers change.
+  const PANEL_MIN_W = 304;
+  let rowW = PANEL_MIN_W;
+  function fitPanel() {
+    const q = $('qsum'), box = q.parentElement;
+    if (full?.on || q.hidden || box.hidden || !host.isConnected) return;
+    const kids = [...q.children].filter((c) => !c.hidden && c.textContent);
+    const cs = getComputedStyle(q), bs = getComputedStyle(box), gap = parseFloat(cs.columnGap) || 0;
+    // The row's padding sits on the row in the panel and on the pill around it; count whichever carries it.
+    const pad = (st) => parseFloat(st.paddingLeft) + parseFloat(st.paddingRight);
+    const need = kids.reduce((w, c) => w + c.scrollWidth, 0) + gap * (kids.length - 1) + pad(cs) +
+      (box === $('pill') ? pad(bs) : 0) + 2; // + the 1px border each side
+    const want = Math.max(PANEL_MIN_W, Math.ceil(need / 4) * 4);
+    if (want > rowW || want < rowW - 16) rowW = want;
+    $('panel').style.width = $('pill').style.width = `${rowW}px`;
+  }
+
+  function renderTrend() {
     const now = Date.now();
     while (history.length && now - history[0].t > HISTORY_MS) history.shift();
-    const svg = $('spark');
-    if (history.length < 2 || history[history.length - 1].t - history[0].t < 20_000) {
-      svg.innerHTML = '<text x="124" y="24" text-anchor="middle" fill="var(--o-faint)" font-size="11">building history…</text>';
-      $('trend').textContent = '';
-      return;
-    }
-    const W = 248, H = 40, max = Math.max(1, ...history.map((h) => h.pending));
-    const x = (t) => ((t - (now - HISTORY_MS)) / HISTORY_MS) * W;
-    const y = (v) => H - 2 - (v / max) * (H - 4);
-    const d = history.map((h, i) => `${i ? 'L' : 'M'}${x(h.t).toFixed(1)},${y(h.pending).toFixed(1)}`).join('');
-    svg.innerHTML = `<path class="area" d="${d}L${x(history[history.length - 1].t).toFixed(1)},${H}L${x(history[0].t).toFixed(1)},${H}Z"/><path class="line" d="${d}"/>`;
+    if (history.length < 2 || history[history.length - 1].t - history[0].t < 20_000) { $('q-trend').textContent = ''; return; }
     // Trend: compare now with ~1 minute ago, so you can tell a draining queue from a growing one.
     const nowP = history[history.length - 1].pending;
     const ref = history.find((h) => now - h.t <= 60_000) ?? history[0];
     const diff = nowP - ref.pending;
     const steady = Math.abs(diff) < Math.max(3, ref.pending * 0.05);
-    $('trend').textContent = steady ? 'steady' : diff > 0 ? `↑ ${num(diff)} in 1m` : `↓ ${num(-diff)} in 1m`;
-    $('trend').className = !steady && diff > 0 ? 'warn' : ''; // a growing queue is the warning sign
+    const k = (n) => (n < 1000 ? String(n) : `${(n / 1000).toFixed(n < 10_000 ? 1 : 0)}k`);
+    $('q-trend').textContent = steady ? '' : diff > 0 ? `↑${k(diff)}` : `↓${k(-diff)}`;
+    $('q-trend').title = steady ? '' : `${diff > 0 ? 'Up' : 'Down'} ${num(Math.abs(diff))} pending in the last minute`;
+    $('q-trend').className = `qtrend ${!steady && diff > 0 ? 'warn' : ''}`; // a growing queue is the warning sign
   }
 
   function applyLayout() {
     if (full?.on) return; // full screen: the dashboard fills the tab; nothing to position
     $('pill').hidden = !settings.collapsed;
     $('panel').hidden = settings.collapsed;
+    // One congestion row, shown in whichever is visible: the minimized pill or the panel under its header.
+    if (settings.collapsed) { if ($('qsum').parentElement !== $('pill')) $('pill').append($('qsum')); }
+    else if ($('qsum').parentElement !== $('panel')) $('head').after($('qsum'));
     host.style.left = `${settings.left}px`;
     host.style.bottom = `${settings.bottom}px`;
     host.style.top = 'auto';
@@ -645,9 +660,9 @@
       handle.addEventListener('pointerup', up);
     });
   }
-  draggable($('pill'), () => { settings.collapsed = false; applyLayout(); storage.set(settings); });
+  draggable($('pill'), () => { settings.collapsed = false; applyLayout(); render(); storage.set(settings); });
   draggable($('head'));
-  $('collapse').addEventListener('click', () => { settings.collapsed = true; applyLayout(); storage.set(settings); });
+  $('collapse').addEventListener('click', () => { settings.collapsed = true; applyLayout(); render(); storage.set(settings); });
 
   // ---- Session key: created by the background worker, authorized by your wallet (Rabby / Ledger) ----
   const API = 'https://exchange.papertrade.xyz';
