@@ -181,7 +181,9 @@
   .qsum .qtrend { color: var(--o-muted); font-size: 11px; margin-left: auto; }
   .qsum .qtrend.warn { color: var(--o-warn); }
   /* Minimized: just the header and the congestion row. */
-  .panel.min > :not(.head):not(.qsum) { display: none !important; }
+  .panel.min > :not(.head):not(.qsum):not(.gone) { display: none !important; }
+  .gone { padding: 8px 12px; border-top: 1px solid var(--o-border); color: var(--o-warn); font-size: 11px; }
+  .gone .link { color: var(--o-warn); }
   .foot { padding: 6px 12px 8px; color: var(--o-muted); font-size: 11px; display: flex; justify-content: space-between; gap: 8px; }
   .warn { color: var(--o-warn); }
   .ok { color: var(--o-pos); }
@@ -484,6 +486,8 @@
       <span class="qtxt"><b id="q-clear">--</b> to clear · <b id="q-pending">--</b> pending tx</span>
       <span class="qtrend" id="q-trend"></span>
     </div>
+    <div class="gone" id="ext-gone" hidden>Paperbox was updated or reloaded, so this page lost its connection to it: orders and
+      the session key won't work here. <button class="link" id="ext-reload">Reload this page</button> to reconnect.</div>
     <div class="session" id="session">
       <div class="row"><span class="lbl">Session key</span><span id="sk-status" class="small">checking…</span></div>
       <div id="sk-detail" class="small" hidden></div>
@@ -564,6 +568,7 @@
     // Not live: the row says why where the trend goes, so it reads right minimized too (the footer is hidden then).
     if (!st.live) { $('q-trend').textContent = age === null ? 'connecting…' : 'unavailable'; $('q-trend').title = $('state').textContent; $('q-trend').className = 'qtrend warn'; }
     fitPanel();
+    $('ext-gone').hidden = extAlive();
   }
 
   // The panel has one fixed width, minimized or not, so nothing jumps: not when minimizing or expanding,
@@ -692,10 +697,18 @@
     });
   }
 
+  // Reloading or updating the extension cuts off content scripts already running in open tabs: chrome.runtime
+  // loses its id and every message to the background fails with "Extension context invalidated". Only reloading
+  // the page brings Paperbox back, so say that plainly instead.
+  const GONE_MSG = 'Paperbox was updated or reloaded; reload this page to reconnect it';
+  const extAlive = () => { try { return !!globalThis.chrome?.runtime?.id; } catch { return false; } };
+
   // Talk to the background worker, which holds the key.
   async function worker(type, extra = {}) {
-    if (!globalThis.chrome?.runtime?.sendMessage) throw new Error('Extension context unavailable; reload the page.');
-    const res = await chrome.runtime.sendMessage({ type, master: sk.master, ...extra });
+    if (!extAlive()) throw new Error(GONE_MSG);
+    let res;
+    try { res = await chrome.runtime.sendMessage({ type, master: sk.master, ...extra }); }
+    catch (err) { throw extAlive() ? err : new Error(GONE_MSG); }
     if (res?.error) throw new Error(res.error);
     return res?.result;
   }
@@ -2705,7 +2718,8 @@
     renderFull();
   }
 
-  $('fullscreen').addEventListener('click', () => chrome.runtime?.sendMessage?.({ type: 'ui:openFull' }));
+  $('fullscreen').addEventListener('click', () => { if (extAlive()) chrome.runtime.sendMessage({ type: 'ui:openFull' }).catch(() => {}); else render(); });
+  $('ext-reload').addEventListener('click', () => location.reload());
   $('f-exit').addEventListener('click', async () => {
     await chrome.runtime?.sendMessage?.({ type: 'ui:leaveFull' }).catch(() => {});
     location.hash = '';

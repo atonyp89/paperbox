@@ -434,7 +434,9 @@ npm run check      # typecheck, syntax-check the plain scripts, build
 npm run zip        # build + paperbox.zip
 ```
 
-After a rebuild, click the reload icon on the extension's card, then reload the Papertrade tab.
+After a rebuild, click the reload icon on the extension's card, then reload the Papertrade tab. Until you do, Chrome
+keeps that tab's old copy of Paperbox cut off from the extension. The panel says so and offers **Reload this page**,
+and orders fail with that message instead of "Extension context invalidated".
 
 ```
 manifest.json         the extension manifest (copied to dist/)
