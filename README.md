@@ -386,6 +386,11 @@ What it shows:
   - **LP balance**: the house bankroll (free LP plus the payout reserve);
   - **Open house PnL**: the inverse of traders' combined open PnL (green when the house is up);
   - **Queue debt**: USDC owed to winners still waiting in the queue (amber when it isn't zero);
+  - **Staker tier**, under LP balance: the share of realized trader losses going to stakers, worked out like
+    Papertrade's staking page from LP + reserve − queue against the staker reward threshold (`paper.cap`, $5M
+    now): 0% below $0, 1% (the fee share) up to the threshold, 99% at or above it (the fee plus 98% LP excess).
+    It shows how far the LP is from the threshold, or how far past it. Open PnL doesn't count, so House funds can
+    be over the threshold while the tier is still 1%;
   - **Net take rate**: how much of every $1 traders lose reaches stakers, as total staker rewards ÷ gross trader
     losses (about 21.1¢ on 2026-10-22). Gross losses aren't published, so they're estimated from the PAPER
     minted: up to the 2026-10-21 upgrade, the old curve's ratchet progress plus the supply minted at the early flat

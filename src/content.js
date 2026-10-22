@@ -403,7 +403,7 @@
   <section class="fpaper" id="house" aria-label="House fund">
     <div class="fpcell fptitle"><span class="ptoken">H</span><span>House fund</span><span class="small" id="hs-age"></span></div>
     <div class="fpcell" title="LP Balance + Open House PnL − Queue Debt"><span class="lbl">House funds</span><span class="val" id="hs-funds">--</span><span class="small">LP + open PnL − queue debt</span></div>
-    <div class="fpcell" title="Gross house bankroll: free LP plus the payout reserve"><span class="lbl">LP balance</span><span class="val" id="hs-lp">--</span></div>
+    <div class="fpcell" title="Gross house bankroll: free LP plus the payout reserve"><span class="lbl">LP balance</span><span class="val" id="hs-lp">--</span><span class="small" id="hs-tier">staker tier --</span></div>
     <div class="fpcell" title="The inverse of aggregate trader PnL across the open book"><span class="lbl">Open house PnL</span><span class="val" id="hs-pnl">--</span><span class="small">inverse of traders' open PnL</span></div>
     <div class="fpcell" title="USDC owed to queued winners"><span class="lbl">Queue debt</span><span class="val" id="hs-debt">--</span><span class="small">owed to queued winners</span></div>
     <div class="fpcell" id="hs-take-cell"><span class="lbl">Net take rate</span><span class="val" id="hs-take">--</span><span class="small" id="hs-take-sub">staker rewards ÷ gross losses</span></div>
@@ -713,7 +713,8 @@
       const n = (v) => (v === undefined ? null : Number(BigInt(v)) / 1e18);
       paperInfo = { supply: BigInt(d.paper.supply), staked: BigInt(d.paper.staked), rewards: d.fees?.lifetime === undefined ? null : BigInt(d.fees.lifetime),
         tail: n(d.paper.tailProgress), rate: n(d.paper.rate), decay: n(d.paper.decay),
-        rebate: d.paper.rebateC36 === undefined ? null : Number(BigInt(d.paper.rebateC36)) / 1e36, insolventSince: d.paper.insolventSince ?? null };
+        rebate: d.paper.rebateC36 === undefined ? null : Number(BigInt(d.paper.rebateC36)) / 1e36, insolventSince: d.paper.insolventSince ?? null,
+        cap: n(d.paper.cap), lpReserve: n(d.balances?.reserve), lpQueue: n(d.balances?.queue), lpBalance: n(d.balances?.lp) };
     } catch { /* keep the last figures; retried next minute */ }
     renderPaper();
     renderHouse();
@@ -2137,13 +2138,14 @@
             (pi.insolventSince ? `; the house has been insolvent since ${new Date(pi.insolventSince > 1e12 ? pi.insolventSince : pi.insolventSince * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC, when losses mint up to 5× as much, so this part may be high.` : '.') : '');
       }
     }
-    if (!h) return;
+    if (!h) { renderTier(null, null); return; }
     const [, lp, traderPnl, debt, bl, bs, el, es] = h;
     const housePnl = -traderPnl, funds = lp + housePnl - debt;
     const exact = (v) => v.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
     const put = (id, text, title, cls = '') => { $(id).textContent = text; $(id).title = title; $(id).className = `val ${cls}`; };
     put('hs-funds', usdC(funds), exact(funds), funds < 0 ? 'bad' : '');
     put('hs-lp', usdC(lp), exact(lp));
+    renderTier(lp, debt);
     put('hs-pnl', usdS(housePnl), exact(housePnl), housePnl > 0 ? 'ok' : housePnl < 0 ? 'bad' : '');
     put('hs-debt', usdC(debt), exact(debt), debt > 0 ? 'warn' : '');
     const net = bl - bs + (el - es);
@@ -2151,6 +2153,25 @@
     const side = (v) => (Math.abs(v) < 0.5 ? 'flat' : v > 0 ? 'net long' : 'net short');
     $('hs-net-sub').textContent = `traders ${side(net)} · BTC ${usdS(bl - bs)} · ETH ${usdS(el - es)}`;
     $('hs-net-sub').title = `BTC long ${exact(bl)} · short ${exact(bs)}\nETH long ${exact(el)} · short ${exact(es)}\nThe house carries the opposite exposure.`;
+  }
+
+  // Staker reward tier, as Papertrade's staking page works it out: on LP + reserve − queue, stakers get 0% of
+  // realized trader losses below $0, 1% (their half of the fee) up to paper.cap, and 99% at or above it (the fee
+  // plus 98% LP excess). Open PnL doesn't count. LP and queue come from the live house feed when it's there; the
+  // reserve from the protocol summary (polled each minute).
+  function renderTier(liveLp, liveQueue) {
+    const pi = paperInfo, el = $('hs-tier');
+    const lp = liveLp ?? pi?.lpBalance, queue = liveQueue ?? pi?.lpQueue;
+    if (!pi || pi.cap == null || lp == null || queue == null) { el.textContent = 'staker tier --'; el.className = 'small'; el.title = ''; return; }
+    const bal = lp + (pi.lpReserve ?? 0) - queue, cap = pi.cap;
+    const tier = bal < 0 ? 0 : cap > 0 && bal >= cap ? 99 : 1;
+    el.textContent = tier === 99 ? `staker tier 99% · ${usdC(bal - cap)} over ${usdC(cap)}`
+      : tier === 1 && cap > 0 ? `staker tier 1% · ${usdC(cap - bal)} to ${usdC(cap)}` : tier === 1 ? 'staker tier 1% · no threshold' : `staker tier 0% · ${usdC(-bal)} below $0`;
+    el.className = `small ${tier === 99 ? 'ok' : tier === 0 ? 'warn' : ''}`;
+    const exact = (v) => v.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
+    el.title = `Stakers get 0% of realized trader losses while LP is below $0, 1% from $0 ${cap > 0 ? `to the ${exact(cap)} threshold` : 'up (no threshold set)'}` +
+      (cap > 0 ? ', and 99% at or above it (1% fee + 98% LP excess)' : '') + `.\n` +
+      `LP ${exact(lp)} + reserve ${exact(pi.lpReserve ?? 0)} − queue ${exact(queue)} = ${exact(bal)}. Open PnL doesn't count.`;
   }
 
   // ---- Roll (full screen): when a losing position's PnL if closed now falls to the threshold, close it and
