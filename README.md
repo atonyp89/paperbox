@@ -234,7 +234,8 @@ The **Payoff** tab charts the PnL of **every position in one market, Papertrade 
 price moved to each level in a range right now.
 
 - **Papertrade** positions are valued the way Papertrade pays out: a linear loss up to the bust price; past the bust
-  the position is liquidated and the whole margin is lost; gains after the impact haircut and the 2% win fee.
+  the position is liquidated and the whole margin is lost; gains after the carve-out, the impact haircut and the
+  2% win fee.
 - **Hyperliquid** positions are linear: size × (price − entry). Their liquidation prices are dotted red lines.
 - **Resting Hyperliquid orders** (on by default; untick to compare) count as filled when the move passes their
   price, and are linear from there. That's how your bust-price hedges take over from liquidated Papertrade positions.
@@ -386,9 +387,10 @@ What it shows:
   - **Open house PnL**: the inverse of traders' combined open PnL (green when the house is up);
   - **Queue debt**: USDC owed to winners still waiting in the queue (amber when it isn't zero);
   - **Net take rate**: how much of every $1 traders lose reaches stakers, as total staker rewards ÷ gross trader
-    losses (about 21.7¢ at launch + 2 weeks). Gross losses aren't published, so they're estimated from the PAPER
-    minted: the curve's ratchet progress plus the supply minted at the early flat rate. Hover for the figures. The
-    true gross may be somewhat higher, which would make the rate a little lower;
+    losses (about 21.1¢ on 2026-10-22). Gross losses aren't published, so they're estimated from the PAPER
+    minted: up to the 2026-10-21 upgrade, the old curve's ratchet progress plus the supply minted at the early flat
+    rate; since then, from supply growth under the new mint rule (about 0.11% of supply per $1M lost). Hover for
+    the figures;
   - **Net open interest**: long − short notional, total and per market (BTC, ETH); the house carries the
     opposite side. Hover for the long and short totals.
 
@@ -396,8 +398,10 @@ What it shows:
 - **Right column:** the order builder, batches and guards. The queue status box and the session key aren't
   repeated there, since the top bar shows both.
 
-PnL here uses Papertrade's exact valuation (deadband, impact haircut, win fee), checked identical to Papertrade's
-own formula on 8,000 random positions. It matches what Papertrade's own
+PnL here uses Papertrade's exact valuation (deadband, carve-out on small wins, impact haircut, win fee), checked
+identical to the web app's own code on 120,000 random positions. It follows the exchange implementation and
+off-hours flag Papertrade reports: the **PnL** header says *off-hours* when the stronger carve-out is in force, and
+its tooltip spells out the rules. Under the new implementation a mark at or through the bust counts as a full loss. It matches what Papertrade's own
 positions table shows. On a narrow window the dashboard stacks into one column.
 
 ## Install

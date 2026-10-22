@@ -60,6 +60,10 @@ A working TypeScript implementation of most of this lives in this repository (se
 - **Session keys:** the master wallet signs once to authorize a local key for 30 days. That key then signs
   opens and closes without wallet prompts ([§10.6](#106-session-keys)).
 - **PAPER token:** closing a losing position mints PAPER. Staked PAPER earns a share of fees, paid in USDC.
+  Since the 2026-10-21 upgrade (≈ 22:01 UTC) a loss of L dollars mints `supply × expm1(c × L × k)`, with
+  `c = paper.rebateC36 / 1e36` (≈ 1.101e-9, i.e. 0.1101% of supply per $1M lost) and `k = 1` while the house is
+  solvent. While insolvent (`paper.insolventSince` set), `k = 1 + 4n(2 − n)` with `n = min(1, seconds insolvent /
+  259200)`, up to 5× after 3 days. The old ratchet's `tailProgress` no longer moves (frozen at ≈ $263.34M).
 
 ---
 
@@ -155,7 +159,9 @@ These cost real debugging time. Read them before writing code.
   "indexedThroughBlock": 48752950,
   "tradingPaused": false,
   "minimumTradeSizeRaw": "10000000000000000000",       // minimum margin per open: $10
-  "minimumOpenNotionalRaw": "1000000000000000000000",  // minimum notional per open: $1,000
+  "minimumOpenNotionalRaw": "500000000000000000000",   // minimum notional per open: $500 (was $1,000)
+  "exchange": "next",                                  // live exchange implementation: "origin" or "next" (§9.2)
+  "offHours": true,                                    // off-hours profit rules in force (next only, §9.2)
   "accRewardPerShareRaw": "…",                         // PAPER staking accumulator (1e27-scaled, see §9.6)
   "instruments": [[ /* 23-field tuple */ ], …],
   "intakeControls": [1792181740343271, "1000000000000000000000", []],
@@ -406,19 +412,29 @@ and take `levels[0][0].px` (bid) and `levels[1][0].px` (ask). For a `terminal` m
 
 ### 9.2 Unrealized PnL (what the contract settles)
 
-From the docs page "Asymmetric impact PnL", a winning close goes through three steps:
+From the docs page "Asymmetric impact PnL", a winning close goes through these steps:
 
 1. **Deadband:** the gain is measured as if the exit were `entry / 50000` (0.2 bps) less favourable. A smaller
    win becomes zero.
-2. **Impact haircut:** the remaining gain is multiplied by
+2. **Carve-out** (`exchange: "next"` only, since 2026-10-21): on a move `d = |mark − entry|` between
+   `lo = ⌊entry × startPpm / 10⁶⌋` and `hi = ⌊entry × endPpm / 10⁶⌋`, a further
+   `holdback × (hi − lo) × (r(1 − r))² × (cubicFall ? 1 − r : 1)` comes off the gain, with `r = (d − lo)/(hi − lo)`.
+   Market hours: `startPpm 75, endPpm 600, holdback 3.597, cubicFall false` (0.0075%–0.06%). Off-hours
+   (`offHours: true`): `30, 1000, 6.085, true` (0.003%–0.1%). It is zero at both ends and largest halfway
+   in (40% of the way with `cubicFall`).
+3. **Impact haircut:** the remaining gain is multiplied by
    `scale = (1 − baseRate) / (1 + 1/(m · rateMultiplier) + referenceNotional / (10⁶ · m · positionMultiplier))`,
    where `m = |exit − entry| / entry` after the deadband. It's harshest on small moves and never keeps more
    than `1 − baseRate` (90%). On BTC, a 1% move keeps ~88% of the raw gain and a 0.1% move ~74% (checked ✓).
-3. **Win fee:** `winFeeRate` (2%) of the scaled gain comes off.
+4. **Win fee:** `winFeeRate` (2%) of the scaled gain comes off.
 
-Losses are linear (`notional × move / entry`) and capped at the margin. Nothing extra is taken.
+Losses are linear (`notional × move / entry`) and capped at the margin. Nothing extra is taken. Under `next`, a
+mark at or through the bust price counts as a full loss of the margin (the position is liquidated).
 
-Exact integer form (`adjustedPnl`, before the win fee):
+The web app values positions in floating point (its `valuation` module), rounding to 6 decimals of a dollar.
+Paperbox's `adjustedPnl` in `src/content.js` is a line-for-line port and matched the web app's own functions on
+120,000 random positions across origin, next and next off-hours. The older exact integer form (origin rules, before
+the win fee) is:
 
 ```ts
 const WAD = 10n ** 18n, MAX = 10n ** 36n, HUGE = (1n << 256n) - 1n;
@@ -930,6 +946,10 @@ The repo is the Paperbox Chrome extension; everything below runs in the browser.
 `Stake` and `Claim` are built in `src/intents.ts` (`stakeMessage`, `claimMessage`) and signed by the master
 wallet through `src/bridge.js`; `Unstake` is documented (section 10) but not implemented here. Total PAPER supply
 and total staked come from `/query/protocol/summary` (`paper.supply`, `paper.staked`, 18 decimals).
+
+The net take rate's gross-loss estimate inverts the mint rules: before the upgrade, `tailProgress + (S₀ −
+rate·decay·tail/(decay + tail)) / rate`, with `S₀` the supply at the switch (8,900,509,278.53 PAPER, hard-coded);
+since, `ln(supply / S₀) / c`. Losses minted while insolvent count up to 5× here, so that part may run high.
 
 ---
 

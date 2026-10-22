@@ -712,7 +712,8 @@
       if (d?.paper?.supply === undefined) throw new Error('no PAPER figures');
       const n = (v) => (v === undefined ? null : Number(BigInt(v)) / 1e18);
       paperInfo = { supply: BigInt(d.paper.supply), staked: BigInt(d.paper.staked), rewards: d.fees?.lifetime === undefined ? null : BigInt(d.fees.lifetime),
-        tail: n(d.paper.tailProgress), rate: n(d.paper.rate), decay: n(d.paper.decay) };
+        tail: n(d.paper.tailProgress), rate: n(d.paper.rate), decay: n(d.paper.decay),
+        rebate: d.paper.rebateC36 === undefined ? null : Number(BigInt(d.paper.rebateC36)) / 1e36, insolventSince: d.paper.insolventSince ?? null };
     } catch { /* keep the last figures; retried next minute */ }
     renderPaper();
     renderHouse();
@@ -1121,7 +1122,7 @@
       // `intakeControls` = [revision, minimumPaperStake, pausedActions]; older builds used `intake` with an extra slot.
       const paused = d.intakeControls?.[2] ?? d.intake?.[3];
       if (!Array.isArray(paused)) throw new Error('Papertrade changed its trading-rules format; refusing to trade until the overlay is updated.');
-      trading = { inst, tradingPaused: d.tradingPaused, paused, minStakeRaw: BigInt(d.intakeControls?.[1] ?? d.intake?.[1] ?? '0'),
+      trading = { inst, tradingPaused: d.tradingPaused, paused, exchange: d.exchange ?? 'origin', offHours: d.offHours === true, minStakeRaw: BigInt(d.intakeControls?.[1] ?? d.intake?.[1] ?? '0'),
         accRewardRaw: d.accRewardPerShareRaw === undefined ? null : BigInt(d.accRewardPerShareRaw), minMargin: Number(BigInt(d.minimumTradeSizeRaw)) / 1e18,
         minNotional: Number(BigInt(d.minimumOpenNotionalRaw)) / 1e18, maxLev: d.maximumLeverage ?? 0, minLev: d.minimumLeverage ?? 0, error: null, at: Date.now() };
     } catch (err) {
@@ -1787,26 +1788,59 @@
   // page, so the socket, the API and Rabby all work exactly as in the overlay.
   const WAD = 10n ** 18n, MAX36 = 10n ** 36n, HUGE = (1n << 256n) - 1n;
 
-  // Exact port of Papertrade's valuation (src/lib/papertrade.ts `adjustedPnl`): losses linear and capped at
-  // the margin; wins measured 0.2 bps less favourably (entry / 50000), then scaled by the impact haircut.
+  // Papertrade's profit rules per exchange implementation, as in its web app's deployment config (the web app
+  // hard-codes them too; /state/trading says which implementation is live and whether it's off-hours). The `next`
+  // implementation (live since 2026-10-21) adds a carve-out on small wins, a stronger one off-hours, and liquidates a
+  // position the moment the mark reaches its bust price.
+  const PROFIT_RULES = {
+    origin: { divisor: 50_000n, carve: null, offHours: null },
+    next: {
+      divisor: 50_000n,
+      carve: { startPpm: 75, endPpm: 600, holdback: 3.597, cubicFall: false },
+      offHours: { startPpm: 30, endPpm: 1000, holdback: 6.085, cubicFall: true },
+    },
+  };
+  function profitProfile() {
+    const known = trading?.exchange === undefined || trading.exchange === 'origin' || trading.exchange === 'next';
+    const r = PROFIT_RULES[trading?.exchange === 'next' || !known ? 'next' : 'origin']; // an unknown one: assume the newest
+    return { divisor: r.divisor, carve: trading?.offHours && r.offHours ? r.offHours : r.carve, bustLiquidates: r.offHours !== null, known };
+  }
+
+  function profitRuleNote() {
+    const prof = profitProfile(), c = prof.carve;
+    return (prof.known ? '' : `Papertrade reports an exchange implementation this version doesn't know ("${trading.exchange}"); valuing with the newest known rules, which may be off.\n`) +
+      `Wins count from entry ± entry/${prof.divisor}` + (c ? `, less a carve-out on moves of ${c.startPpm / 1e4}%–${c.endPpm / 1e4}% (${trading?.offHours ? 'off-hours' : 'market hours'})` : '') +
+      ', then the impact haircut' + (prof.bustLiquidates ? '. A mark at or through the bust price counts as a full loss.' : '.');
+  }
+
+  // Exact port of Papertrade's valuation (its web app's `valuation` module): losses linear and capped at the margin
+  // (and a full loss once liquidated); wins measured entry / 50000 less favourably, minus the carve-out on small
+  // moves, then scaled by the impact haircut. Floating point like the web app, rounded to 6 decimals of a dollar.
   function adjustedPnl(p, inst, markRaw) {
-    const entry = p.entryRaw, threshold = entry / 50_000n;
-    let exit = markRaw;
-    if (p.isLong) { if (markRaw > entry + threshold) exit = markRaw - threshold; else if (markRaw > entry) exit = entry; }
-    else { if (markRaw + threshold < entry) exit = markRaw + threshold; else if (markRaw < entry) exit = entry; }
-    const move = p.isLong ? exit - entry : entry - exit;
-    const raw = (p.marginRaw * BigInt(p.leverage) * move) / entry;
-    if (raw <= 0n) return raw < -p.marginRaw ? -p.marginRaw : raw;
-    const absMove = exit > entry ? exit - entry : entry - exit;
-    if (absMove === 0n) return 0n;
-    const ratio = (absMove * WAD) / entry;
-    const rateTerm = (ratio * inst.rateMultiplierRaw) / WAD;
-    const b = rateTerm > 0n ? MAX36 / rateTerm : HUGE;
-    const sizeTerm = (1_000_000n * ratio * inst.positionMultiplierRaw) / WAD;
-    const sT = sizeTerm > 0n ? (inst.referenceNotionalRaw * WAD) / sizeTerm : HUGE;
-    if (b > MAX36 || sT > MAX36) return 0n;
-    const factor = ((WAD - inst.baseRateRaw) * WAD) / (WAD + b + sT);
-    return (raw * factor) / WAD;
+    const prof = profitProfile();
+    if (prof.bustLiquidates && (p.isLong ? markRaw <= p.bustRaw : markRaw >= p.bustRaw)) return -p.marginRaw;
+    const entry = Number(p.entryRaw), inv = 1 / entry, mark = Number(markRaw), lev = p.leverage; // × inv, as the web app
+    if (lev * (p.isLong ? entry - mark : mark - entry) >= entry) return -p.marginRaw; // lost the whole margin
+    const margin = Number(p.marginRaw) / 1e18, levMargin = Number(p.marginRaw * BigInt(lev)) / 1e18;
+    const move = p.isLong ? mark - entry : entry - mark;
+    let usd;
+    if (move <= 0) usd = Math.max(-margin, levMargin * move * inv);
+    else {
+      let gain = move - Number(p.entryRaw / prof.divisor);
+      const c = prof.carve, rel = move * inv;
+      if (c && rel < c.endPpm / 1e6 && rel + inv > c.startPpm / 1e6) {
+        const lo = Math.floor((entry * c.startPpm) / 1e6), hi = Math.floor((entry * c.endPpm) / 1e6);
+        if (move > lo && move < hi) {
+          const span = hi - lo, r = (move - lo) / span, q = r * (1 - r);
+          gain -= c.holdback * span * q * q * (c.cubicFall ? 1 - r : 1);
+        }
+      }
+      const h = Math.max(0, gain) * inv;
+      const s1 = 1 / (Number(inst.rateMultiplierRaw) / 1e18), s2 = Number(inst.referenceNotionalRaw) / 1e18 / (1e6 * (Number(inst.positionMultiplierRaw) / 1e18));
+      const keep = 1 - Number(inst.baseRateRaw) / 1e18;
+      usd = h === 0 || Math.max(s1, s2) > 1e18 * h ? 0 : (levMargin * h * keep) / (1 + (s1 + s2) / h);
+    }
+    return BigInt(Math.round(usd * 1e6)) * 1_000_000_000_000n;
   }
   const linearPnl = (p, markRaw) => {
     const v = (p.marginRaw * BigInt(p.leverage) * (p.isLong ? markRaw - p.entryRaw : p.entryRaw - markRaw)) / p.entryRaw;
@@ -1948,7 +1982,7 @@
         <td>${rollCell(p, staged_)}</td></tr>`;
     });
     $('f-pos').innerHTML = rows.length
-      ? `<thead><tr><th>Position<span class="sub">open for</span></th><th>Market</th><th>Leverage</th><th>Size</th><th>Notional</th><th>Entry</th><th>Mark<span class="sub">move</span></th><th>PnL<span class="sub">if closed now</span></th><th>Close cost<span class="sub">of the gain</span></th><th>Bust<span class="sub">risk</span></th><th></th></tr></thead><tbody>${rows.join('')}</tbody>`
+      ? `<thead><tr><th>Position<span class="sub">open for</span></th><th>Market</th><th>Leverage</th><th>Size</th><th>Notional</th><th>Entry</th><th>Mark<span class="sub">move</span></th><th title="${profitRuleNote().replace(/[&"<]/g, (ch) => `&#${ch.charCodeAt(0)};`)}">PnL<span class="sub">if closed now${trading?.offHours ? ' · off-hours' : ''}${profitProfile().known ? '' : ' · <span class="neg">rules unknown</span>'}</span></th><th>Close cost<span class="sub">of the gain</span></th><th>Bust<span class="sub">risk</span></th><th></th></tr></thead><tbody>${rows.join('')}</tbody>`
       : `<tbody><tr><td class="fempty">${acct.streamLive === false ? 'Waiting for your account from Papertrade…' : 'No open positions.'}</td></tr></tbody>`;
     const posNote = acct.streamLive === false
       ? 'Account stream reconnecting (Papertrade may be rate-limiting); showing the last data received'
@@ -2073,6 +2107,7 @@
   }
   const usdC = (v) => { const a = Math.abs(v); return `${v < 0 ? '−' : ''}$${a >= 1e9 ? `${(a / 1e9).toFixed(2)}B` : a >= 1e6 ? `${(a / 1e6).toFixed(2)}M` : a >= 1e3 ? `${(a / 1e3).toFixed(1)}K` : a.toFixed(2)}`; };
   const usdS = (v) => (v > 0 ? `+${usdC(v)}` : usdC(v));
+  const SUPPLY_AT_MINT_SWITCH = 8_900_509_278.53; // PAPER supply when the new mint rule went live, 2026-10-21 22:01 UTC
   function renderHouse() {
     if (!full.on) return;
     const h = house.head;
@@ -2080,20 +2115,26 @@
     $('hs-age').textContent = h ? (house.error || age > 30 ? `stale · ${age}s` : 'live') : house.error ? 'unavailable' : 'loading…';
     $('hs-age').className = `small ${!h || house.error || age > 30 ? 'warn' : 'ok'}`;
     // Net take rate: total staker rewards ÷ gross trader losses, i.e. how much of every $1 lost reached stakers.
-    // Papertrade doesn't publish gross losses, so they're estimated from the PAPER minted (each $1 lost mints PAPER):
-    // the curve's tailProgress (≈ $1 per $1 lost), plus whatever supply the curve can't account for, minted at
-    // the flat rate (early losses, when the house was under its cliff).
+    // Papertrade doesn't publish gross losses, so they're estimated from the PAPER minted (each $1 lost mints PAPER).
+    // Up to the 2026-10-21 upgrade: the old curve's tailProgress (≈ $1 per $1 lost), plus whatever supply the curve
+    // can't account for, minted at the flat rate (early losses, when the house was under its cliff). Since then a
+    // loss L mints supply × expm1(c × L) (c = rebateC36 / 1e36) and tailProgress stays put, so the losses since are
+    // ln(supply / supply at the upgrade) / c.
     const pi = paperInfo;
     if (pi?.rewards != null && pi.tail != null && pi.rate > 0 && pi.decay > 0) {
       const supply = Number(pi.supply) / 1e18, tailMinted = (pi.rate * pi.decay * pi.tail) / (pi.decay + pi.tail);
-      const gross = pi.tail + Math.max(0, supply - tailMinted) / pi.rate, rewards = Number(pi.rewards) / 1e18;
+      const atSwitch = pi.rebate > 0 ? Math.min(supply, SUPPLY_AT_MINT_SWITCH) : supply;
+      const before = pi.tail + Math.max(0, atSwitch - tailMinted) / pi.rate, since = pi.rebate > 0 ? Math.log(supply / atSwitch) / pi.rebate : 0;
+      const gross = before + since, rewards = Number(pi.rewards) / 1e18;
       if (gross > 0) {
         const take = rewards / gross;
         $('hs-take').textContent = `${(take * 100).toFixed(1)}¢`;
         $('hs-take-sub').textContent = `per $1 lost · ${usdC(rewards)} ÷ est. ${usdC(gross)}`;
         $('hs-take-cell').title = `Staker rewards ${usdC(rewards)} ÷ estimated gross trader losses ${usdC(gross)} = ${(take * 100).toFixed(2)}¢ of every $1 lost.\n` +
-          `Gross losses aren't published; they're estimated from the PAPER minted: ${usdC(pi.tail)} of ratchet progress plus ${usdC(gross - pi.tail)} minted at the flat ${pi.rate} PAPER per $1. ` +
-          `Losses made while the house is below its previous high mint PAPER without advancing the ratchet, so the true figure may be somewhat lower.`;
+          `Gross losses aren't published; they're estimated from the PAPER minted. Before the 2026-10-21 upgrade: ${usdC(pi.tail)} of ratchet progress plus ${usdC(before - pi.tail)} minted at the flat ${pi.rate} PAPER per $1 ` +
+          `(losses made while the house was below its previous high minted PAPER without advancing the ratchet, so this part may be somewhat high). ` +
+          (pi.rebate > 0 ? `Since: ${usdC(since)}, from supply growing ${((supply / atSwitch - 1) * 100).toFixed(3)}% at ${(pi.rebate * 1e8).toFixed(4)}% per $1M lost` +
+            (pi.insolventSince ? `; the house has been insolvent since ${new Date(pi.insolventSince > 1e12 ? pi.insolventSince : pi.insolventSince * 1000).toISOString().slice(0, 16).replace('T', ' ')} UTC, when losses mint up to 5× as much, so this part may be high.` : '.') : '');
       }
     }
     if (!h) return;
