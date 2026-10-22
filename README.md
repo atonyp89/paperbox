@@ -228,6 +228,25 @@ public info API.
   `subAccounts` for the rest, and `frontendOpenOrders` for each account that holds money or positions. The section's
   heading says how many positions are open.
 
+## Payoff (full screen)
+
+The **Payoff** tab charts the PnL of **every position in one market, Papertrade and Hyperliquid together**, if the
+price moved to each level in a range right now.
+
+- **Papertrade** positions are valued the way Papertrade pays out: a linear loss up to the bust price; past the bust
+  the position is liquidated and the whole margin is lost; gains after the impact haircut and the 2% win fee.
+- **Hyperliquid** positions are linear: size × (price − entry). Their liquidation prices are dotted red lines.
+- **Resting Hyperliquid orders** (on by default; untick to compare) count as filled when the move passes their
+  price, and are linear from there. That's how your bust-price hedges take over from liquidated Papertrade positions.
+- **Lines:** Total (solid), Papertrade (dashed), Hyperliquid (dotted), over green / red shading for profit and loss.
+  Red markers along the bottom are Papertrade bust prices; green ones along the top are Hyperliquid orders.
+- **Above the chart:** PnL now, **net delta** (in coins and dollars per 1% move), and the worst and best PnL in the
+  range with the price where each happens. Hover the chart for the PnL at any price, split by venue.
+- **Controls:** BTC or ETH, and the range (±5%, ±10%, ±20%, ±30%). It redraws every 2 seconds.
+
+It's an instant-move picture: it doesn't model time, funding, or Hyperliquid's cross-margin liquidation beyond
+marking the price.
+
 ## Roll (full screen)
 
 **Roll** is an automatic loss reset for a single position. When a position's **PnL if closed now** falls to your

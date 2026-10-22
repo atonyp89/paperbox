@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Paperbox",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Papertrade queue status and batch orders with queue, pending-tx and OI guards, signed by a session key you authorize.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA4ZFu6pSGn8JPtwpEJFCGC18fMuB6Q0ydzDzaLRu1hUxk1cAFL20WT6xA39bhyrXfq+dkIO9LZYvK8Ub7eqaxH2T6Ne10rjFX0HvuncXe8oIoZM8NDnirh9mqgwn+4vcNjtSfQo0TUvBbq0CoKMJlfVM3mRFowHP0rUCW2XWk8X8cndLLe58TTiOMp2EdW9bU3qTrKKl+Dil4rYk+3xlx9gmcNMB16PVjwg+jKiAZTqHIat1AAi2Ut9Hf/VFeaO7O3zUUfGTQB+AV79h3BluipTP5rBjDyE9ZF0QFspQ80VHUlQmYfNl/T27vGaEY7hL5tGo/31mXhqDah+R8LvK2QwIDAQAB",
   "minimum_chrome_version": "111",

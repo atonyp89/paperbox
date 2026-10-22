@@ -123,7 +123,7 @@
   // Full-screen dashboard state (see "Full-screen mode" below); declared first because layout code reads it.
   const full = { on: false, marks: {}, markAt: {}, winFeeRaw: null, history: [], histFor: null, cursor: null, historyStale: true, historyLoading: false, ranks: {}, tab: 'positions', page: 0 };
   const HIST_PAGE = 25;
-  try { if (sessionStorage.getItem('pt-full-tab') === 'history') full.tab = 'history'; } catch { /* storage blocked: default tab */ }
+  try { const t = sessionStorage.getItem('pt-full-tab'); if (t === 'history' || t === 'payoff') full.tab = t; } catch { /* storage blocked: default tab */ }
   const host = document.createElement('div');
   host.id = 'papertrade-status-overlay';
   host.style.cssText = 'position:fixed;z-index:2147483646;left:16px;bottom:16px;';
@@ -316,6 +316,29 @@
   .frollbar input.bad { border-color: var(--o-neg); }
   #hl-orders td.hmatch, #hl-orders th:last-child { text-align: left; }
   .ftable td.htype { color: var(--o-muted); font-size: 11px; }
+  .frollbar input[type="checkbox"] { all: revert; margin: 0 4px 0 0; accent-color: var(--o-ink); }
+  .pfstats { display: flex; flex-wrap: wrap; gap: 4px 24px; padding: 10px 14px 0; font-size: 12px; color: var(--o-muted); font-variant-numeric: tabular-nums; }
+  .pfstats b { color: var(--o-ink); font-weight: 600; }
+  .pfchart { position: relative; height: 340px; margin: 6px 8px 0; }
+  .pfchart svg { display: block; width: 100%; height: 100%; overflow: visible; }
+  .pf-grid { stroke: var(--o-border); stroke-width: 1; }
+  .pf-zero { stroke: var(--o-muted); stroke-width: 1; }
+  .pf-axis { fill: var(--o-muted); font: 10px var(--o-font); font-variant-numeric: tabular-nums; }
+  .pf-total { stroke: var(--o-ink); stroke-width: 2.25; fill: none; stroke-linejoin: round; }
+  .pf-pt { stroke: #2a78d6; stroke-width: 1.5; fill: none; stroke-dasharray: 6 4; }
+  .pf-hl { stroke: #1baf7a; stroke-width: 1.5; fill: none; stroke-dasharray: 2 3; }
+  .pf-pos { fill: color-mix(in srgb, var(--o-pos) 10%, transparent); } .pf-neg { fill: color-mix(in srgb, var(--o-neg) 10%, transparent); }
+  .pf-now { stroke: var(--o-ink); stroke-width: 1; stroke-dasharray: 3 3; }
+  .pf-liq { stroke: var(--o-neg); stroke-width: 1; stroke-dasharray: 1 3; }
+  .pf-bust { fill: var(--o-neg); } .pf-ord { fill: #1baf7a; }
+  .pf-cross { stroke: var(--o-muted); stroke-width: 1; }
+  .pf-dot { stroke: var(--o-panel); stroke-width: 2; }
+  .pftip { position: absolute; top: 4px; pointer-events: none; background: var(--o-panel); border: 1px solid var(--o-border); border-radius: 6px; padding: 6px 9px; font-size: 11px; line-height: 1.5; font-variant-numeric: tabular-nums; box-shadow: var(--o-shadow); white-space: nowrap; }
+  .pflegend { display: flex; flex-wrap: wrap; gap: 6px 18px; padding: 6px 14px 14px; font-size: 11px; color: var(--o-muted); }
+  .pflegend span { display: inline-flex; align-items: center; gap: 6px; }
+  .pf-key { display: inline-block; width: 0; height: 0; border-left: 5px solid transparent; border-right: 5px solid transparent; }
+  .pf-bustk { border-bottom: 7px solid var(--o-neg); } .pf-ordk { border-top: 7px solid #1baf7a; }
+  @media (prefers-color-scheme: dark) { .pf-pt { stroke: #3987e5; } .pf-hl, .pf-ord { stroke: #199e70; } }
   .frollbar input.hladdr { width: 360px; max-width: 100%; text-align: left; font: 500 12px var(--o-mono, ui-monospace, Menlo, monospace); }
   .ftable td .rollst { white-space: nowrap; }
   .ftable .facts { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
@@ -394,6 +417,7 @@
           <nav class="tabstrip" id="f-tabs">
             <button class="ftab" data-ftab="positions" type="button">Positions<span class="cnt" id="f-pos-count"></span></button>
             <button class="ftab" data-ftab="history" type="button">History</button>
+            <button class="ftab" data-ftab="payoff" type="button">Payoff</button>
           </nav>
           <span class="small ftabnote" id="f-tab-note"></span>
         </div>
@@ -420,6 +444,23 @@
           <div class="fscroll"><table class="ftable" id="hl-orders"></table></div>
           <div class="fsubh"><h4>Accounts</h4><span class="small" id="hl-accts-note"></span></div>
           <div class="fscroll"><table class="ftable" id="hl-accts"></table></div>
+        </div>
+        <div id="f-tab-payoff" hidden>
+          <div class="frollbar">
+            <span class="seg2" id="pf-coin" role="group" aria-label="Market"><button type="button" data-coin="BTC" class="on">BTC</button><button type="button" data-coin="ETH">ETH</button></span>
+            <span class="seg2" id="pf-range" role="group" aria-label="Price range"><button type="button" data-r="0.05">±5%</button><button type="button" data-r="0.1" class="on">±10%</button><button type="button" data-r="0.2">±20%</button><button type="button" data-r="0.3">±30%</button></span>
+            <label title="Resting Hyperliquid orders (e.g. your bust-price hedges) fill when the price reaches them"><input type="checkbox" id="pf-orders" checked /> include resting Hyperliquid orders</label>
+            <span class="small" id="pf-note"></span>
+          </div>
+          <div class="pfstats" id="pf-stats"></div>
+          <div class="pfchart" id="pf-chart"><svg id="pf-svg" role="img" aria-label="Payoff chart"></svg><div class="pftip" id="pf-tip" hidden></div></div>
+          <div class="pflegend">
+            <span><svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="pf-total" /></svg>Total</span>
+            <span><svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="pf-pt" /></svg>Papertrade</span>
+            <span><svg width="22" height="8" aria-hidden="true"><line x1="1" y1="4" x2="21" y2="4" class="pf-hl" /></svg>Hyperliquid (positions + orders)</span>
+            <span><span class="pf-key pf-bustk"></span>Papertrade bust</span>
+            <span><span class="pf-key pf-ordk"></span>Hyperliquid order</span>
+          </div>
         </div>
         <div id="f-tab-history" hidden>
           <div class="fscroll"><table class="ftable" id="f-hist"></table></div>
@@ -2009,8 +2050,10 @@
     for (const b of $('f-tabs').querySelectorAll('[data-ftab]')) b.classList.toggle('on', b.dataset.ftab === full.tab);
     $('f-tab-positions').hidden = full.tab !== 'positions';
     $('f-tab-history').hidden = full.tab !== 'history';
+    $('f-tab-payoff').hidden = full.tab !== 'payoff';
     const note = $('f-tab-note');
-    note.textContent = full.tab === 'positions' ? 'Papertrade and Hyperliquid' : 'closed and liquidated Papertrade positions · PnL net of fee';
+    note.textContent = full.tab === 'positions' ? 'Papertrade and Hyperliquid' : full.tab === 'payoff' ? 'PnL of every position on both venues if the price moved now'
+      : 'closed and liquidated Papertrade positions · PnL net of fee';
     note.className = 'small ftabnote';
     $('f-pt-note').textContent = `${acct.positions.size} open · ${posNote}`;
     $('f-pt-note').className = `small ftabnote ${acct.streamLive === false ? 'warn' : ''}`;
@@ -2417,6 +2460,140 @@
     note.className = `small ftabnote ${positions.length && uncovered.length ? 'warn' : positions.length ? 'ok' : ''}`;
   }
 
+  // ---- Payoff (full screen): the PnL of every position in one market, Papertrade and Hyperliquid together, if the
+  // price moved to each level in a range right now. ----
+  // Papertrade: valued as Papertrade pays out (linear loss up to the bust; past it the position is liquidated and the
+  // whole margin is lost; gains after the haircut and the 2% win fee). Hyperliquid positions: linear. Resting
+  // Hyperliquid orders (optional): filled when the move passes their price (a limit or a trigger alike), then linear
+  // from there, which is how the bust-price hedges take over from liquidated Papertrade positions.
+  const pf = { coin: 'BTC', range: 0.1, orders: true, model: null };
+
+  function payoffInputs(coin) {
+    const inst = trading?.inst?.[coin];
+    const markRaw = inst && markOf(inst);
+    const hlMark = (() => { for (const a of hl.data?.accounts ?? []) for (const ap of a.state?.assetPositions ?? []) if (ap.position.coin === coin && hn(ap.position.szi)) return hn(ap.position.positionValue) / Math.abs(hn(ap.position.szi)); return null; })();
+    const now = markRaw ? Number(markRaw) / inst.priceScale : hlMark ?? (Number(mids[coin]) || null);
+    const pt = inst ? [...acct.positions.values()].filter((p) => p.instrumentId === inst.id) : [];
+    const hlPos = [];
+    for (const a of hl.data?.accounts ?? []) for (const ap of a.state?.assetPositions ?? []) {
+      const q = ap.position;
+      if (q.coin === coin && hn(q.szi)) hlPos.push({ a, szi: hn(q.szi), entry: hn(q.entryPx), liq: q.liquidationPx ? hn(q.liquidationPx) : null });
+    }
+    const hlOrd = (hl.orderList ?? []).filter((x) => x.coin === coin);
+    return { inst, now, pt, hlPos, hlOrd };
+  }
+
+  function ptPnlAt(p, inst, price) {
+    const bust = Number(p.bustRaw) / inst.priceScale;
+    if (p.isLong ? price <= bust : price >= bust) return -p.margin; // liquidated at its bust: the margin is gone
+    return wadNum(payout(adjustedPnl(p, inst, BigInt(Math.round(price * inst.priceScale)))));
+  }
+
+  function payoffAt(I, price, withOrders) {
+    let pt = 0, hlv = 0;
+    for (const p of I.pt) pt += ptPnlAt(p, I.inst, price);
+    for (const h of I.hlPos) hlv += h.szi * (price - h.entry);
+    if (withOrders) for (const x of I.hlOrd) {
+      const L = x.price;
+      if ((I.now <= L && L <= price) || (price <= L && L <= I.now)) hlv += (x.isBuy ? 1 : -1) * x.size * (price - L); // the move passed it: filled at L
+    }
+    return { pt, hl: hlv, total: pt + hlv };
+  }
+
+  function buildPayoff() {
+    const I = payoffInputs(pf.coin);
+    if (!I.now || !I.inst) return null;
+    const lo = I.now * (1 - pf.range), hi = I.now * (1 + pf.range);
+    const xs = new Set(Array.from({ length: 301 }, (_, i) => lo + ((hi - lo) * i) / 300));
+    // Exact kinks: each bust (just either side) and each order price, so jumps and corners are drawn where they are.
+    const eps = I.now * 1e-6;
+    for (const p of I.pt) { const b = Number(p.bustRaw) / I.inst.priceScale; xs.add(b - eps); xs.add(b + eps); }
+    for (const x of I.hlOrd) { xs.add(x.price - eps); xs.add(x.price + eps); }
+    xs.add(I.now);
+    const pts = [...xs].filter((x) => x >= lo && x <= hi).sort((a, b) => a - b).map((x) => ({ x, ...payoffAt(I, x, pf.orders) }));
+    const at = (x) => payoffAt(I, x, pf.orders);
+    const nowV = at(I.now), d = I.now * 0.001;
+    const delta = (at(I.now + d).total - at(I.now - d).total) / (2 * d); // in coins (dPnL / dPrice)
+    let worst = pts[0], best = pts[0];
+    for (const q of pts) { if (q.total < worst.total) worst = q; if (q.total > best.total) best = q; }
+    return { I, lo, hi, pts, nowV, delta, worst, best };
+  }
+
+  function renderPayoff(force = false) {
+    if (!full.on || full.tab !== 'payoff' || (pf.hovering && !force)) return; // don't redraw under the pointer
+    const m = (pf.model = buildPayoff());
+    const svg = $('pf-svg');
+    const hlReady = !!hl.data;
+    $('pf-note').textContent = `${hlReady ? '' : 'Hyperliquid not loaded yet · '}${pf.coin} only`;
+    if (!m) { svg.innerHTML = ''; $('pf-stats').innerHTML = `<span>Waiting for a ${pf.coin} price…</span>`; return; }
+    const { I } = m;
+    const fmtP = (v) => v.toLocaleString('en-US', { maximumFractionDigits: v >= 1000 ? 0 : 2 });
+    const fmtUsdS = (v) => `${v > 0 ? '+' : v < 0 ? '−' : ''}$${Math.abs(v) >= 1e6 ? `${(Math.abs(v) / 1e6).toFixed(2)}M` : Math.abs(v) >= 1e4 ? `${(Math.abs(v) / 1e3).toFixed(1)}K` : Math.abs(v).toFixed(0)}`;
+    const counts = `${I.pt.length} Papertrade · ${I.hlPos.length} Hyperliquid position${I.hlPos.length === 1 ? '' : 's'}${pf.orders ? ` · ${I.hlOrd.length} order${I.hlOrd.length === 1 ? '' : 's'}` : ''}`;
+    $('pf-stats').innerHTML = `<span>Now ${fmtP(I.now)}: <b class="${tone(m.nowV.total)}">${fmtUsdS(m.nowV.total)}</b></span>`
+      + `<span>Net delta <b>${m.delta >= 0 ? '+' : '−'}${Math.abs(m.delta).toFixed(3)} ${pf.coin}</b> (${fmtUsdS(m.delta * I.now * 0.01)} per 1%)</span>`
+      + `<span>Worst <b class="bad">${fmtUsdS(m.worst.total)}</b> at ${fmtP(m.worst.x)}</span>`
+      + `<span>Best <b class="ok">${fmtUsdS(m.best.total)}</b> at ${fmtP(m.best.x)}</span><span>${counts}</span>`;
+
+    const box = $('pf-chart').getBoundingClientRect();
+    const W = Math.max(320, Math.round(box.width)), H = Math.round(box.height);
+    const L = 64, R = 12, T = 14, B = 30, w = W - L - R, h = H - T - B;
+    const ys = m.pts.flatMap((q) => [q.total, q.pt, q.hl]);
+    let ymin = Math.min(0, ...ys), ymax = Math.max(0, ...ys);
+    if (ymax - ymin < 1) { ymin -= 1; ymax += 1; }
+    const pad = (ymax - ymin) * 0.08; ymin -= pad; ymax += pad;
+    const X = (x) => L + ((x - m.lo) / (m.hi - m.lo)) * w, Y = (y) => T + ((ymax - y) / (ymax - ymin)) * h;
+    const nice = (span, n) => { const raw = span / n, mag = 10 ** Math.floor(Math.log10(raw)), f = raw / mag; return (f < 1.5 ? 1 : f < 3.5 ? 2 : f < 7.5 ? 5 : 10) * mag; };
+    const ystep = nice(ymax - ymin, 5), xstep = nice(m.hi - m.lo, 6);
+    let g = '';
+    for (let v = Math.ceil(ymin / ystep) * ystep; v <= ymax; v += ystep) g += `<line class="pf-grid" x1="${L}" x2="${L + w}" y1="${Y(v)}" y2="${Y(v)}"/><text class="pf-axis" x="${L - 6}" y="${Y(v) + 3}" text-anchor="end">${fmtUsdS(v).replace('+', '')}</text>`;
+    for (let v = Math.ceil(m.lo / xstep) * xstep; v <= m.hi; v += xstep) g += `<text class="pf-axis" x="${X(v)}" y="${T + h + 16}" text-anchor="middle">${fmtP(v)}</text>`;
+    const path = (key) => m.pts.map((q, i) => `${i ? 'L' : 'M'}${X(q.x).toFixed(1)},${Y(q[key]).toFixed(1)}`).join('');
+    // Profit / loss shading under the total line.
+    const area = (sign) => `M${X(m.pts[0].x)},${Y(0)}` + m.pts.map((q) => `L${X(q.x).toFixed(1)},${Y(sign > 0 ? Math.max(0, q.total) : Math.min(0, q.total)).toFixed(1)}`).join('') + `L${X(m.pts.at(-1).x)},${Y(0)}Z`;
+    let marks = '';
+    for (const p of I.pt) {
+      const b = Number(p.bustRaw) / I.inst.priceScale;
+      if (b < m.lo || b > m.hi) continue;
+      marks += `<path class="pf-bust" d="M${X(b) - 5},${T + h} L${X(b) + 5},${T + h} L${X(b)},${T + h - 8}Z"><title>Papertrade #${p.id} ${p.isLong ? 'long' : 'short'} bust ${fmtP(b)}</title></path>`;
+    }
+    if (pf.orders) for (const x of I.hlOrd) {
+      if (x.price < m.lo || x.price > m.hi) continue;
+      marks += `<path class="pf-ord" d="M${X(x.price) - 5},${T} L${X(x.price) + 5},${T} L${X(x.price)},${T + 8}Z"><title>Hyperliquid ${x.isBuy ? 'buy' : 'sell'} ${hlSz(x.size)} @ ${fmtP(x.price)}</title></path>`;
+    }
+    for (const q of I.hlPos) if (q.liq && q.liq >= m.lo && q.liq <= m.hi) marks += `<line class="pf-liq" x1="${X(q.liq)}" x2="${X(q.liq)}" y1="${T}" y2="${T + h}"><title>Hyperliquid liquidation ${fmtP(q.liq)}</title></line>`;
+    svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+    svg.setAttribute('aria-label', `Payoff of all ${pf.coin} positions from ${fmtP(m.lo)} to ${fmtP(m.hi)}: now ${fmtUsdS(m.nowV.total)}, worst ${fmtUsdS(m.worst.total)}, best ${fmtUsdS(m.best.total)}`);
+    svg.innerHTML = g
+      + `<path class="pf-pos" d="${area(1)}"/><path class="pf-neg" d="${area(-1)}"/>`
+      + `<line class="pf-zero" x1="${L}" x2="${L + w}" y1="${Y(0)}" y2="${Y(0)}"/>`
+      + `<path class="pf-pt" d="${path('pt')}"/><path class="pf-hl" d="${path('hl')}"/><path class="pf-total" d="${path('total')}"/>`
+      + `<line class="pf-now" x1="${X(I.now)}" x2="${X(I.now)}" y1="${T}" y2="${T + h}"/><text class="pf-axis" x="${X(I.now) + 4}" y="${T + 10}">now ${fmtP(I.now)}</text>`
+      + marks
+      + `<g id="pf-hover" style="display:none"><line class="pf-cross" id="pf-cross" y1="${T}" y2="${T + h}"/><circle class="pf-dot" id="pf-dot" r="4" style="fill: var(--o-ink)"/></g>`
+      + `<rect id="pf-hit" x="${L}" y="${T}" width="${w}" height="${h}" fill="transparent"/>`;
+    pf.geom = { X, Y, L, w, T, h, W, fmtP, fmtUsdS };
+  }
+
+  function payoffHover(e) {
+    const m = pf.model, gm = pf.geom;
+    if (!m || !gm) return;
+    const rect = $('pf-svg').getBoundingClientRect(), sx = ((e.clientX - rect.left) / rect.width) * gm.W;
+    const price = m.lo + ((sx - gm.L) / gm.w) * (m.hi - m.lo);
+    if (price < m.lo || price > m.hi) return payoffLeave();
+    const v = payoffAt(m.I, price, pf.orders);
+    pf.hovering = true;
+    $('pf-hover').style.display = '';
+    $('pf-cross').setAttribute('x1', gm.X(price)); $('pf-cross').setAttribute('x2', gm.X(price));
+    $('pf-dot').setAttribute('cx', gm.X(price)); $('pf-dot').setAttribute('cy', gm.Y(v.total));
+    const tip = $('pf-tip'), mv = ((price / m.I.now - 1) * 100);
+    tip.hidden = false;
+    tip.innerHTML = `<b>${pf.coin} ${gm.fmtP(price)}</b> (${mv >= 0 ? '+' : ''}${mv.toFixed(2)}%)<br>Total <b class="${tone(v.total)}">${gm.fmtUsdS(v.total)}</b><br>Papertrade ${gm.fmtUsdS(v.pt)}<br>Hyperliquid ${gm.fmtUsdS(v.hl)}`;
+    const px_ = (gm.X(price) / gm.W) * rect.width;
+    tip.style.left = `${Math.min(rect.width - tip.offsetWidth - 4, Math.max(4, px_ + 12))}px`;
+  }
+  function payoffLeave() { pf.hovering = false; if ($('pf-hover')) $('pf-hover').style.display = 'none'; $('pf-tip').hidden = true; }
+
   async function enterFull() {
     full.on = true;
     host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;';
@@ -2433,6 +2610,7 @@
     const rs = settings.roll;
     if (rs) { $('r-distance').value = rs.distance ?? '5'; $('r-pending').value = rs.pending ?? '20'; $('r-oi').value = rs.oi ?? '2'; }
     setInterval(tickRolls, 1_000);
+    setInterval(renderPayoff, 2_000); // only draws while the Payoff tab is open
     loadHl(); // the Hyperliquid section, and the hedge badge in the top bar (shown on every tab)
     setInterval(() => { if (!document.hidden) loadHl(); }, 10_000);
     setInterval(() => { if (full.tab === 'positions') renderHlNote(); }, 1_000);
@@ -2456,6 +2634,12 @@
     if (full.tab !== 'positions') { full.tab = 'positions'; try { sessionStorage.setItem('pt-full-tab', 'positions'); } catch {} loadHl(); renderFull(); }
     setTimeout(() => $('hl-orders').scrollIntoView({ block: 'center' }), 30); // once the tab is shown
   });
+  $('pf-svg').addEventListener('pointermove', payoffHover);
+  $('pf-svg').addEventListener('pointerleave', payoffLeave);
+  $('pf-coin').addEventListener('click', (e) => { const b = e.target.closest('[data-coin]'); if (!b) return; pf.coin = b.dataset.coin; for (const x of $('pf-coin').children) x.classList.toggle('on', x === b); renderPayoff(true); });
+  $('pf-range').addEventListener('click', (e) => { const b = e.target.closest('[data-r]'); if (!b) return; pf.range = Number(b.dataset.r); for (const x of $('pf-range').children) x.classList.toggle('on', x === b); renderPayoff(true); });
+  $('pf-orders').addEventListener('change', () => { pf.orders = $('pf-orders').checked; renderPayoff(true); });
+  window.addEventListener('resize', () => renderPayoff());
   $('f-tabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-ftab]');
     if (!b) return;
@@ -2463,6 +2647,7 @@
     try { sessionStorage.setItem('pt-full-tab', full.tab); } catch { /* not remembered */ }
     if (full.tab === 'positions') loadHl();
     renderFull();
+    if (full.tab === 'payoff') renderPayoff();
   });
   $('f-prev').addEventListener('click', () => { full.page = Math.max(0, full.page - 1); renderFull(); });
   $('f-next').addEventListener('click', () => {
