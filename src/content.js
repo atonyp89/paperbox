@@ -412,6 +412,10 @@
     <div class="fpcell" id="hs-take-cell"><span class="lbl">Net take rate</span><span class="val" id="hs-take">--</span><span class="small" id="hs-take-sub">staker rewards ÷ gross losses</span></div>
     <div class="fpcell" title="Long minus short notional; the house carries the opposite exposure"><span class="lbl">Net open interest</span><span class="val" id="hs-net">--</span><span class="small" id="hs-net-sub"></span></div>
   </section>
+  <section class="fpaper" id="oi" aria-label="Open interest headroom">
+    <div class="fpcell fptitle"><span class="ptoken">O</span><span>OI headroom</span><span class="small" id="oi-age"></span></div>
+    <div class="fpcell"><span class="small">Loading market rules…</span></div>
+  </section>
   <dl class="fcards" id="f-cards"></dl>
   <div class="fbody">
     <main class="fmain">
@@ -1149,6 +1153,7 @@
         inst[t[1]] = { id: t[0], symbol: t[1], priceScale: Number(t[3]), active: t[4], paused: t[5], terminal: t[6], closeOnly: t[8],
           maxLeverage: t[14], maxNotional: Number(BigInt(t[15])) / 1e18, bustBuffer: Number(BigInt(t[16])) / 1e18,
           longRoom: oiRoom(t[21], t[19]), shortRoom: oiRoom(t[22], t[20]),
+          longOi: Number(BigInt(t[19])) / 1e18, shortOi: Number(BigInt(t[20])) / 1e18, longCap: oiRoom(t[21], '0'), shortCap: oiRoom(t[22], '0'),
           // Exact integers for PnL (see valuation below).
           priceScaleRaw: BigInt(t[3]), frozenBidRaw: t[9] === null ? null : BigInt(t[9]), frozenAskRaw: t[10] === null ? null : BigInt(t[10]),
           rateMultiplierRaw: BigInt(t[12]), positionMultiplierRaw: BigInt(t[13]), baseRateRaw: BigInt(t[17]), referenceNotionalRaw: BigInt(t[18]) };
@@ -2207,6 +2212,51 @@
       `LP ${exact(lp)} + reserve ${exact(pi.lpReserve ?? 0)} − queue ${exact(queue)} = ${exact(bal)}. Open PnL doesn't count.`;
   }
 
+  // OI headroom strip: room left under each market's long and short open-interest cap (cap − OI, priced at the
+  // Hyperliquid mid), the tightest side, and how the batch OI guard's buffer stands against them. Caps and OI come
+  // from the market rules, polled every 15s while full screen is open.
+  function renderOi() {
+    if (!full.on) return;
+    const age = trading?.at ? Math.round((Date.now() - trading.at) / 1000) : null;
+    $('oi-age').textContent = age === null ? (trading?.error ? 'unavailable' : 'loading…') : age > 45 ? `stale · ${age}s` : `updated ${age}s ago`;
+    $('oi-age').className = `small ${age === null || age > 45 ? 'warn' : 'ok'}`;
+    if (!trading?.inst) return;
+    const buf = readOiBuffer().oiBuffer ?? null;
+    const sides = [];
+    for (const m of Object.keys(trading.inst).sort()) for (const isLong of [true, false]) {
+      const inst = trading.inst[m], mid = Number(mids[m]) || null;
+      const cap = isLong ? inst.longCap : inst.shortCap, oi = isLong ? inst.longOi : inst.shortOi;
+      const room = isLong ? inst.longRoom : inst.shortRoom;
+      sides.push({ m, isLong, mid, cap, oi, room, roomUsd: mid === null ? null : room * mid });
+    }
+    const cell = (x) => {
+      if (x.cap === Infinity) return `<div class="fpcell"><span class="lbl">${x.m} ${x.isLong ? 'long' : 'short'} room</span><span class="val">no cap</span><span class="small">OI ${x.mid === null ? '--' : fmtM(x.oi * x.mid)}</span></div>`;
+      if (x.roomUsd === null) return `<div class="fpcell"><span class="lbl">${x.m} ${x.isLong ? 'long' : 'short'} room</span><span class="val">--</span><span class="small">waiting for a ${x.m} price</span></div>`;
+      const used = x.cap > 0 ? Math.min(100, (x.oi / x.cap) * 100) : 100;
+      const cls = (buf !== null && x.roomUsd < buf) || x.room <= 0 ? 'bad' : used >= 90 ? 'warn' : '';
+      const exact = (v) => `$${Math.round(v).toLocaleString('en-US')}`;
+      // OI can sit above a cap the keeper lowered: the side is full (no opens) until it drops back under.
+      const sub = x.oi > x.cap ? `OI ${fmtM(x.oi * x.mid)} · over the ${fmtM(x.cap * x.mid)} cap by ${fmtM((x.oi - x.cap) * x.mid)}`
+        : `OI ${fmtM(x.oi * x.mid)} of ${fmtM(x.cap * x.mid)} · ${used.toFixed(used >= 99.5 || used < 0.5 ? 0 : 1)}% used`;
+      return `<div class="fpcell" title="${x.m} ${x.isLong ? 'long' : 'short'}: cap ${exact(x.cap * x.mid)} (${x.cap.toLocaleString('en-US', { maximumFractionDigits: 2 })} ${x.m}), OI ${exact(x.oi * x.mid)}, room ${exact(x.roomUsd)}">` +
+        `<span class="lbl">${x.m} ${x.isLong ? 'long' : 'short'} room</span><span class="val ${cls}">${x.room <= 0 ? 'full' : fmtM(x.roomUsd)}</span>` +
+        `<span class="small">${sub}</span></div>`;
+    };
+    const priced = sides.filter((x) => x.roomUsd !== null && x.cap !== Infinity);
+    const tight = priced.reduce((a, x) => (a === null || x.roomUsd < a.roomUsd ? x : a), null);
+    const under = buf === null ? [] : priced.filter((x) => x.roomUsd < buf);
+    const extra = [
+      `<div class="fpcell"><span class="lbl">Tightest side</span><span class="val ${tight && ((buf !== null && tight.roomUsd < buf) || tight.room <= 0) ? 'bad' : ''}">${tight ? (tight.room <= 0 ? 'full' : fmtM(tight.roomUsd)) : '--'}</span><span class="small">${tight ? `${tight.m} ${tight.isLong ? 'long' : 'short'}` : ''}</span></div>`,
+      `<div class="fpcell" title="The batch OI guard (Send when OI cap room above, in the order builder): opens wait until their side has more room than this."><span class="lbl">Batch OI guard</span>` +
+        `<span class="val">${buf === null ? 'off' : fmtM(buf)}</span><span class="small ${under.length ? 'bad' : buf === null ? '' : 'ok'}">${buf === null ? 'no OI check on batches'
+          : under.length ? `${under.map((x) => `${x.m} ${x.isLong ? 'long' : 'short'}`).join(', ')} under it: opens there wait` : 'every side has more room'}</span></div>`,
+    ];
+    const html = `<div class="fpcell fptitle"><span class="ptoken">O</span><span>OI headroom</span><span class="small" id="oi-age"></span></div>${sides.map(cell).join('')}${extra.join('')}`;
+    const ageText = $('oi-age').textContent, ageCls = $('oi-age').className;
+    $('oi').innerHTML = html;
+    $('oi-age').textContent = ageText; $('oi-age').className = ageCls;
+  }
+
   // ---- Roll (full screen): when a losing position's PnL if closed now falls to the threshold, close it and
   // open the same position again (same market, side, margin, leverage) as one 2-order batch, so the loss is
   // realized (and mints PAPER) and the PnL starts again from zero. It never acts on a position in profit, and it
@@ -2701,6 +2751,8 @@
     loadHouse(); // the House fund strip
     setInterval(loadHouse, 5_000);
     setInterval(renderHouse, 1_000); // keeps "live / stale" honest between polls
+    setInterval(() => { if (!document.hidden) loadTrading(); }, 15_000); // OI headroom: fresher caps and OI than the 60s poll
+    setInterval(renderOi, 1_000);
     const rs = settings.roll;
     if (rs) { $('r-distance').value = rs.distance ?? '5'; $('r-pending').value = rs.pending ?? '20'; $('r-oi').value = rs.oi ?? '2'; }
     setInterval(tickRolls, 1_000);

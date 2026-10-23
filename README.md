@@ -404,6 +404,16 @@ What it shows:
     opposite side. Hover for the long and short totals.
 
   The strip's title says **live**, or **stale** with the age if updates stop.
+- **OI headroom strip** (under the House fund strip): how much more open interest each market's long and short
+  side can take before its cap, priced at the Hyperliquid mid:
+  - **BTC / ETH long and short room**: cap − OI, with OI, cap and % used under it (amber from 90% used, red when
+    under the batch OI guard's buffer). **full** means OI is at or over a cap the keeper lowered: no opens on that
+    side until it drops back under. Hover for exact dollars and the cap in coins;
+  - **Tightest side**: the side with the least room;
+  - **Batch OI guard**: the order builder's "Send when OI cap room above" buffer, and which sides are under it
+    (opens there wait).
+
+  Caps and OI refresh every 15 seconds while full screen is open; the title shows how old they are.
 - **Right column:** the order builder, batches and guards. The queue status box and the session key aren't
   repeated there, since the top bar shows both.
 
